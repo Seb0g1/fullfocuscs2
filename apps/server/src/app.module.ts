@@ -11,6 +11,7 @@ import { GrenadesService } from "./grenades/grenades.service";
 import { HealthController } from "./health.controller";
 import { PrismaService } from "./prisma.service";
 import { RedisService } from "./redis.service";
+import { AvatarService } from "./stats/avatar.service";
 import { StatsService } from "./stats/stats.service";
 import { SteamClient } from "./steam/steam.client";
 
@@ -25,6 +26,7 @@ import { SteamClient } from "./steam/steam.client";
   providers: [
     AdminGuard,
     AuthService,
+    AvatarService,
     BotService,
     FaceitClient,
     GrenadesService,

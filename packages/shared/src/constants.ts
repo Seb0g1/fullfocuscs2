@@ -17,9 +17,9 @@ export const CS2_MAPS = [
 ] as const;
 
 export const GRENADE_TYPES = [
-  { slug: "smoke", label: "Smoke" },
-  { slug: "flash", label: "Flash" },
-  { slug: "molotov", label: "Molotov" },
+  { slug: "smoke", label: "Смоки" },
+  { slug: "flash", label: "Флешки" },
+  { slug: "molotov", label: "Молики" },
   { slug: "he", label: "HE" }
 ] as const;
 

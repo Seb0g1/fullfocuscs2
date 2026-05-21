@@ -4,12 +4,23 @@ export type AdminRole = "owner" | "admin" | "editor";
 
 export const adminRoleSchema = z.enum(["owner", "admin", "editor"]);
 
+export const grenadeMediaItemSchema = z.object({
+  type: z.enum(["image", "video", "external"]),
+  url: z.string(),
+  thumbnailUrl: z.string().nullable().optional(),
+  caption: z.string().nullable().optional()
+});
+
 export const grenadeLineupSchema = z.object({
   id: z.string(),
   mapSlug: z.string(),
   mapName: z.string(),
+  mapOverviewImageUrl: z.string().nullable().optional(),
   side: z.enum(["t", "ct", "both"]),
   grenadeType: z.enum(["smoke", "flash", "molotov", "he"]),
+  area: z.string(),
+  areaSlug: z.string(),
+  positionSlug: z.string(),
   from: z.string(),
   to: z.string(),
   title: z.string(),
@@ -19,12 +30,23 @@ export const grenadeLineupSchema = z.object({
   mediaType: z.enum(["image", "video", "external"]),
   mediaUrl: z.string(),
   thumbnailUrl: z.string().nullable(),
+  mediaItems: z.array(grenadeMediaItemSchema),
   published: z.boolean(),
   createdAt: z.string(),
   updatedAt: z.string()
 });
 
+export type GrenadeMediaItem = z.infer<typeof grenadeMediaItemSchema>;
 export type GrenadeLineup = z.infer<typeof grenadeLineupSchema>;
+
+export interface CsMapSummary {
+  id: string;
+  slug: string;
+  name: string;
+  active: boolean;
+  sortOrder: number;
+  overviewImageUrl: string | null;
+}
 
 export interface AdminUser {
   id: string;
@@ -40,6 +62,7 @@ export interface PlayerSummary {
   playerId: string;
   nickname: string;
   avatar: string | null;
+  avatarDataUri?: string | null;
   country: string | null;
   faceitUrl: string | null;
   steamId64: string | null;

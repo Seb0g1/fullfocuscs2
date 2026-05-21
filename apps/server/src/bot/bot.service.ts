@@ -1,15 +1,12 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { renderComparisonCard, renderStatCard } from "@fullfocus/card-renderer";
-import { GRENADE_TYPES, splitCompareInput } from "@fullfocus/shared";
+import { buildGrenadeCallback, GRENADE_TYPES, splitCompareInput } from "@fullfocus/shared";
 import { Markup, Telegraf, type Context } from "telegraf";
 import { GrenadesService } from "../grenades/grenades.service";
 import { StatsService } from "../stats/stats.service";
 
-type BotState =
-  | { mode: "stats" }
-  | { mode: "compare" }
-  | { mode: "idle" };
+type BotState = { mode: "stats" } | { mode: "compare" } | { mode: "idle" };
 
 @Injectable()
 export class BotService implements OnModuleInit, OnModuleDestroy {
@@ -84,15 +81,25 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       await ctx.answerCbQuery();
       await this.sendGrenadeMaps(ctx);
     });
-    bot.action(/^grenade:map:(.+)$/i, async (ctx) => {
+    bot.action(/^gr:m:([^:]+)$/i, async (ctx) => {
       await ctx.answerCbQuery();
-      const mapSlug = ctx.match[1];
-      await this.sendGrenadeTypes(ctx, mapSlug);
+      await this.sendGrenadeSides(ctx, ctx.match[1]);
     });
-    bot.action(/^grenade:type:([^:]+):([^:]+)$/i, async (ctx) => {
+    bot.action(/^gr:s:([^:]+):([^:]+)$/i, async (ctx) => {
       await ctx.answerCbQuery();
-      const [, mapSlug, type] = ctx.match;
-      await this.sendLineups(ctx, mapSlug, type);
+      await this.sendGrenadeAreas(ctx, ctx.match[1], ctx.match[2]);
+    });
+    bot.action(/^gr:a:([^:]+):([^:]+):([^:]+)$/i, async (ctx) => {
+      await ctx.answerCbQuery();
+      await this.sendGrenadeTypes(ctx, ctx.match[1], ctx.match[2], ctx.match[3]);
+    });
+    bot.action(/^gr:t:([^:]+):([^:]+):([^:]+):([^:]+)$/i, async (ctx) => {
+      await ctx.answerCbQuery();
+      await this.sendLineupPositions(ctx, ctx.match[1], ctx.match[2], ctx.match[3], ctx.match[4]);
+    });
+    bot.action(/^gr:p:(.+)$/i, async (ctx) => {
+      await ctx.answerCbQuery();
+      await this.sendLineup(ctx, ctx.match[1]);
     });
     bot.action(/^lineup:(.+)$/i, async (ctx) => {
       await ctx.answerCbQuery();
@@ -106,7 +113,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       "Привет! Я FullFocus cs2: FACEIT статистика, сравнение игроков и база раскидов гранат. Выбери действие кнопками ниже.";
     const imageUrl = this.config.get<string>("BOT_WELCOME_IMAGE_URL");
     if (imageUrl) {
-      await ctx.replyWithPhoto(imageUrl, { caption, ...this.menuKeyboard() });
+      await ctx.replyWithPhoto(this.publicUrl(imageUrl), { caption, ...this.menuKeyboard() });
       return;
     }
     await ctx.reply(caption, this.menuKeyboard());
@@ -199,36 +206,94 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       return;
     }
     await ctx.reply(
-      "Выбери карту:",
-      Markup.inlineKeyboard(maps.map((map) => [Markup.button.callback(map.name, `grenade:map:${map.slug}`)]))
+      "На какой карте нужен раскид?",
+      Markup.inlineKeyboard([
+        ...chunkButtons(maps.map((map) => Markup.button.callback(map.name, buildGrenadeCallback({ kind: "map", mapSlug: map.slug }))), 2),
+        [Markup.button.callback("Главное меню", "menu")]
+      ])
     );
   }
 
-  private async sendGrenadeTypes(ctx: Context, mapSlug: string) {
-    const types = await this.grenades.listTypesForMap(mapSlug);
-    const buttons = GRENADE_TYPES.filter((type) => types.includes(type.slug)).map((type) => [
-      Markup.button.callback(type.label, `grenade:type:${mapSlug}:${type.slug}`)
-    ]);
-    if (!buttons.length) {
-      await ctx.reply("Для этой карты пока нет опубликованных гранат.", this.menuKeyboard());
+  private async sendGrenadeSides(ctx: Context, mapSlug: string) {
+    const [maps, sides] = await Promise.all([this.grenades.listPublishedMaps(), this.grenades.listSidesForMap(mapSlug)]);
+    const map = maps.find((item) => item.slug === mapSlug);
+    if (!map || !sides.length) {
+      await ctx.reply("Для этой карты пока нет опубликованных раскидов.", this.grenadeBackToMapsKeyboard());
       return;
     }
-    await ctx.reply("Выбери тип гранаты:", Markup.inlineKeyboard(buttons));
+
+    const keyboard = Markup.inlineKeyboard([
+      sides.map((side) => Markup.button.callback(sideLabel(side), buildGrenadeCallback({ kind: "side", mapSlug, side }))),
+      [Markup.button.callback("Назад к выбору карт", "grenades")],
+      [Markup.button.callback("Главное меню", "menu")]
+    ]);
+    const text = `Карта: ${map.name}\nВыбери сторону.`;
+    if (map.overviewImageUrl) {
+      await ctx.replyWithPhoto(this.publicUrl(map.overviewImageUrl), { caption: text, ...keyboard });
+      return;
+    }
+    await ctx.reply(text, keyboard);
   }
 
-  private async sendLineups(ctx: Context, mapSlug: string, type: string) {
-    const lineups = await this.grenades.listLineups({ mapSlug, type, published: true });
-    if (!lineups.length) {
-      await ctx.reply("Не нашел опубликованных раскидов по этому фильтру.", this.menuKeyboard());
+  private async sendGrenadeAreas(ctx: Context, mapSlug: string, side: string) {
+    const areas = await this.grenades.listAreas({ mapSlug, side });
+    if (!areas.length) {
+      await ctx.reply("Для этой стороны пока нет опубликованных раскидов.", this.grenadeBackToMapsKeyboard());
       return;
     }
+
     await ctx.reply(
-      "Выбери раскид:",
-      Markup.inlineKeyboard(
-        lineups.slice(0, 20).map((lineup) => [
-          Markup.button.callback(`${lineup.from} → ${lineup.to}`, `lineup:${lineup.id}`)
-        ])
-      )
+      "Выбери часть карты:",
+      Markup.inlineKeyboard([
+        ...chunkButtons(
+          areas.map((area) =>
+            Markup.button.callback(area.area, buildGrenadeCallback({ kind: "area", mapSlug, side: normalizeSide(side), areaSlug: area.areaSlug }))
+          ),
+          3
+        ),
+        [Markup.button.callback("Назад", buildGrenadeCallback({ kind: "map", mapSlug }))],
+        [Markup.button.callback("Главное меню", "menu")]
+      ])
+    );
+  }
+
+  private async sendGrenadeTypes(ctx: Context, mapSlug: string, side: string, areaSlug: string) {
+    const types = await this.grenades.listTypesForSelection({ mapSlug, side, areaSlug });
+    const buttons = GRENADE_TYPES.filter((type) => types.includes(type.slug)).map((type) =>
+      Markup.button.callback(type.label, buildGrenadeCallback({ kind: "type", mapSlug, side: normalizeSide(side), areaSlug, grenadeType: type.slug }))
+    );
+    if (!buttons.length) {
+      await ctx.reply("Для этой части карты пока нет опубликованных гранат.", this.grenadeBackToMapsKeyboard());
+      return;
+    }
+
+    await ctx.reply(
+      "Выбери тип гранаты:",
+      Markup.inlineKeyboard([
+        ...chunkButtons(buttons, 3),
+        [Markup.button.callback("Назад", buildGrenadeCallback({ kind: "side", mapSlug, side: normalizeSide(side) }))],
+        [Markup.button.callback("Главное меню", "menu")]
+      ])
+    );
+  }
+
+  private async sendLineupPositions(ctx: Context, mapSlug: string, side: string, areaSlug: string, type: string) {
+    const lineups = await this.grenades.listLineups({ mapSlug, side, areaSlug, type, published: true });
+    if (!lineups.length) {
+      await ctx.reply("Не нашел опубликованных раскидов по этому фильтру.", this.grenadeBackToMapsKeyboard());
+      return;
+    }
+
+    await ctx.reply(
+      "Выбери позицию:",
+      Markup.inlineKeyboard([
+        ...chunkButtons(
+          lineups.slice(0, 24).map((lineup) => Markup.button.callback(lineup.to || lineup.title, buildGrenadeCallback({ kind: "position", lineupId: lineup.id }))),
+          2
+        ),
+        [Markup.button.callback("Назад", buildGrenadeCallback({ kind: "area", mapSlug, side: normalizeSide(side), areaSlug }))],
+        [Markup.button.callback("К выбору карты", "grenades")]
+      ])
     );
   }
 
@@ -238,14 +303,55 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       await ctx.reply("Раскид не найден или снят с публикации.", this.menuKeyboard());
       return;
     }
-    const text = `${lineup.mapName} · ${lineup.grenadeType.toUpperCase()}\n${lineup.title}\n\nОткуда: ${lineup.from}\nКуда: ${lineup.to}\nСложность: ${lineup.difficulty}\n\n${lineup.description}`;
-    if (lineup.mediaType === "image") {
-      await ctx.replyWithPhoto(lineup.mediaUrl, { caption: text, ...this.menuKeyboard() });
-    } else if (lineup.mediaType === "video") {
-      await ctx.replyWithVideo(lineup.mediaUrl, { caption: text, ...this.menuKeyboard() });
-    } else {
-      await ctx.reply(`${text}\n\n${lineup.mediaUrl}`, this.menuKeyboard());
+
+    const caption = [
+      `${lineup.mapName} · ${grenadeTypeLabel(lineup.grenadeType)} · ${sideLabel(lineup.side)}`,
+      lineup.title,
+      "",
+      `Откуда: ${lineup.from}`,
+      `Куда: ${lineup.to}`,
+      `Часть карты: ${lineup.area}`,
+      `Сложность: ${difficultyLabel(lineup.difficulty)}`,
+      "",
+      lineup.description
+    ].join("\n");
+    const mediaItems = lineup.mediaItems.length
+      ? lineup.mediaItems
+      : [{ type: lineup.mediaType, url: lineup.mediaUrl, thumbnailUrl: lineup.thumbnailUrl, caption: lineup.title }];
+    const media = mediaItems.filter((item) => item.url).slice(0, 10);
+
+    if (!media.length) {
+      await ctx.reply(caption, this.menuKeyboard());
+      return;
     }
+
+    if (media.length === 1) {
+      const item = media[0];
+      if (item.type === "video") {
+        await ctx.replyWithVideo(this.publicUrl(item.url), { caption, ...this.menuKeyboard() });
+      } else if (item.type === "image") {
+        await ctx.replyWithPhoto(this.publicUrl(item.url), { caption, ...this.menuKeyboard() });
+      } else {
+        await ctx.reply(`${caption}\n\n${this.publicUrl(item.url)}`, this.menuKeyboard());
+      }
+      return;
+    }
+
+    const album = media
+      .filter((item) => item.type === "image" || item.type === "video")
+      .map((item, index) => ({
+        type: item.type === "video" ? "video" : "photo",
+        media: this.publicUrl(item.url),
+        caption: index === 0 ? caption : item.caption ?? undefined
+      }));
+
+    if (album.length) {
+      await ctx.replyWithMediaGroup(album as never);
+      await ctx.reply("Готово. Можешь выбрать ещё одну позицию или вернуться в меню.", this.menuKeyboard());
+      return;
+    }
+
+    await ctx.reply(`${caption}\n\n${media.map((item) => this.publicUrl(item.url)).join("\n")}`, this.menuKeyboard());
   }
 
   private menuKeyboard() {
@@ -259,6 +365,13 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
         Markup.button.callback("Лидерборд", "leaderboard")
       ],
       [Markup.button.callback("Настройки", "settings")]
+    ]);
+  }
+
+  private grenadeBackToMapsKeyboard() {
+    return Markup.inlineKeyboard([
+      [Markup.button.callback("К выбору карты", "grenades")],
+      [Markup.button.callback("Главное меню", "menu")]
     ]);
   }
 
@@ -278,10 +391,47 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  private publicUrl(url: string): string {
+    if (url.startsWith("http")) {
+      return url;
+    }
+    const base = this.config.get<string>("ADMIN_PUBLIC_URL")?.replace(/\/$/, "");
+    return base && url.startsWith("/") ? `${base}${url}` : url;
+  }
+
   private toUserError(error: unknown): string {
     if (error instanceof Error) {
       return `Не получилось выполнить запрос: ${error.message}`;
     }
     return "Не получилось выполнить запрос. Попробуй позже.";
   }
+}
+
+function chunkButtons<T>(buttons: T[], size: number): T[][] {
+  const rows: T[][] = [];
+  for (let index = 0; index < buttons.length; index += size) {
+    rows.push(buttons.slice(index, index + size));
+  }
+  return rows;
+}
+
+function normalizeSide(side: string): "t" | "ct" {
+  return side.toLowerCase() === "ct" ? "ct" : "t";
+}
+
+function sideLabel(side: string): string {
+  const normalized = side.toLowerCase();
+  if (normalized === "ct") return "CT";
+  if (normalized === "both") return "T/CT";
+  return "T";
+}
+
+function grenadeTypeLabel(type: string): string {
+  return GRENADE_TYPES.find((item) => item.slug === type)?.label ?? type.toUpperCase();
+}
+
+function difficultyLabel(value: string): string {
+  if (value === "hard") return "сложно";
+  if (value === "medium") return "средне";
+  return "легко";
 }

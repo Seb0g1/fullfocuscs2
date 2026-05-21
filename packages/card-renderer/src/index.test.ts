@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { calculateWindowStats, type MatchStatRecord, type StatCardPayload } from "@fullfocus/shared";
-import { renderStatCard } from "./index";
+import { renderComparisonCard, renderComparisonCardSvg, renderStatCard, renderStatCardSvg } from "./index";
 
 const records: MatchStatRecord[] = Array.from({ length: 30 }, (_, index) => ({
   result: index % 3 === 0 ? "L" : "W",
@@ -22,6 +22,7 @@ const payload: StatCardPayload = {
     playerId: "player",
     nickname: "Seb0g1",
     avatar: null,
+    avatarDataUri: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAAXSURBVChTY/jvyvCfGDyqEC+mtkKG/wA26+Ita7hw6QAAAABJRU5ErkJggg==",
     country: "RU",
     faceitUrl: null,
     steamId64: null,
@@ -41,5 +42,20 @@ describe("renderStatCard", () => {
     const png = await renderStatCard(payload);
     expect(png.subarray(1, 4).toString()).toBe("PNG");
     expect(png.byteLength).toBeGreaterThan(1000);
+  });
+
+  it("renders avatar image and level badge in svg", () => {
+    const svg = renderStatCardSvg(payload);
+    expect(svg).toContain("<image");
+    expect(svg).toContain("LVL");
+    expect(svg).toContain(">10</text>");
+  });
+
+  it("renders comparison png and svg with both level badges", async () => {
+    const comparison = { generatedAt: payload.generatedAt, botName: payload.botName, seasonLabel: payload.seasonLabel, window: 30, left: payload, right: payload };
+    const png = await renderComparisonCard(comparison);
+    const svg = renderComparisonCardSvg(comparison);
+    expect(png.subarray(1, 4).toString()).toBe("PNG");
+    expect(svg.match(/>10<\/text>/g)?.length).toBeGreaterThanOrEqual(2);
   });
 });

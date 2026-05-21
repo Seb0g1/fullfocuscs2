@@ -30,11 +30,13 @@ describe("StatsService", () => {
     const prisma = {
       playerQueryLog: { create: vi.fn().mockResolvedValue({}) }
     };
-    const service = new StatsService(faceit as never, steam as never, prisma as never);
+    const avatars = { prepareAvatarDataUri: vi.fn().mockResolvedValue(null) };
+    const service = new StatsService(faceit as never, steam as never, prisma as never, avatars as never);
 
     const payload = await service.buildPlayerStatPayload("Seb0g1");
 
     expect(payload.player.nickname).toBe("Seb0g1");
+    expect(avatars.prepareAvatarDataUri).toHaveBeenCalledWith(null);
     expect(payload.currentWindow.matches).toBe(30);
     expect(payload.currentWindow.kd).toBe(2);
     expect(payload.currentWindow.winrate).toBe(50);

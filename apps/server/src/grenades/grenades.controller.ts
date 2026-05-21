@@ -25,14 +25,32 @@ export class GrenadesController {
 
   @Post("admin/maps")
   @UseGuards(AdminGuard)
-  async createMap(@Body() body: { slug: string; name: string; active?: boolean }) {
+  async createMap(@Body() body: { slug: string; name: string; active?: boolean; overviewImageUrl?: string | null }) {
     return this.grenades.createMap(body);
+  }
+
+  @Put("admin/maps/:id")
+  @UseGuards(AdminGuard)
+  async updateMap(@Param("id") id: string, @Body() body: { name?: string; active?: boolean; overviewImageUrl?: string | null }) {
+    return this.grenades.updateMap(id, body);
   }
 
   @Get("admin/grenades")
   @UseGuards(AdminGuard)
-  async lineups(@Query("mapId") mapId?: string, @Query("type") type?: string) {
-    return this.grenades.listLineups({ mapId, type });
+  async lineups(
+    @Query("mapId") mapId?: string,
+    @Query("type") type?: string,
+    @Query("side") side?: string,
+    @Query("areaSlug") areaSlug?: string,
+    @Query("published") published?: string
+  ) {
+    return this.grenades.listLineups({
+      mapId,
+      type,
+      side,
+      areaSlug,
+      published: published === undefined || published === "" ? undefined : published === "true"
+    });
   }
 
   @Post("admin/grenades")

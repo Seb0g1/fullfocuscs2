@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "corepack pnpm --filter @fullfocus/shared build && corepack pnpm --filter @fullfocus/card-renderer build && corepack pnpm --parallel --filter @fullfocus/server --filter @fullfocus/admin dev",
     "build": "corepack pnpm -r build",
-    "typecheck": "corepack pnpm -r typecheck",
+    "typecheck": "corepack pnpm --filter @fullfocus/shared build && corepack pnpm -r typecheck",
     "test": "corepack pnpm -r test",
     "lint": "corepack pnpm -r lint",
     "prisma:generate": "corepack pnpm --filter @fullfocus/server prisma:generate"

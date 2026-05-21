@@ -13,6 +13,7 @@ import {
 import { PrismaService } from "../prisma.service";
 import { FaceitClient } from "../faceit/faceit.client";
 import { SteamClient } from "../steam/steam.client";
+import { AvatarService } from "./avatar.service";
 
 const NUMBER_KEYS: Record<keyof Omit<MatchStatRecord, "matchId" | "finishedAt" | "result">, string[]> = {
   kills: ["Kills", "kills"],
@@ -30,7 +31,8 @@ export class StatsService {
   constructor(
     private readonly faceit: FaceitClient,
     private readonly steam: SteamClient,
-    private readonly prisma: PrismaService
+    private readonly prisma: PrismaService,
+    private readonly avatars: AvatarService
   ) {}
 
   async buildPlayerStatPayload(input: string, window = 30, telegramId?: string): Promise<StatCardPayload> {
@@ -121,7 +123,9 @@ export class StatsService {
       player = await this.faceit.getPlayerByNickname(parsed.value);
     }
 
-    return this.normalizePlayer(player);
+    const summary = this.normalizePlayer(player);
+    summary.avatarDataUri = await this.avatars.prepareAvatarDataUri(summary.avatar);
+    return summary;
   }
 
   private normalizePlayer(player: Record<string, unknown>): PlayerSummary {

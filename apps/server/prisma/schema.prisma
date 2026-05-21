@@ -49,14 +49,15 @@ model AdminUser {
 }
 
 model CsMap {
-  id        String           @id @default(cuid())
-  slug      String           @unique
-  name      String
-  active    Boolean          @default(true)
-  sortOrder Int              @default(0)
-  lineups   GrenadeLineup[]
-  createdAt DateTime         @default(now())
-  updatedAt DateTime         @updatedAt
+  id               String           @id @default(cuid())
+  slug             String           @unique
+  name             String
+  active           Boolean          @default(true)
+  sortOrder        Int              @default(0)
+  overviewImageUrl String?
+  lineups          GrenadeLineup[]
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
 }
 
 model GrenadeLineup {
@@ -65,6 +66,9 @@ model GrenadeLineup {
   map          CsMap              @relation(fields: [mapId], references: [id], onDelete: Cascade)
   side         GrenadeSide
   grenadeType  GrenadeType
+  area         String             @default("")
+  areaSlug     String             @default("")
+  positionSlug String             @default("")
   fromPosition String
   toPosition   String
   title        String
@@ -74,12 +78,15 @@ model GrenadeLineup {
   mediaType    MediaType
   mediaUrl     String
   thumbnailUrl String?
+  mediaItems   Json?
   published    Boolean            @default(false)
   createdAt    DateTime           @default(now())
   updatedAt    DateTime           @updatedAt
 
   @@index([mapId, published])
   @@index([grenadeType, side])
+  @@index([mapId, side, areaSlug])
+  @@index([mapId, side, areaSlug, grenadeType])
 }
 
 model BotUser {
