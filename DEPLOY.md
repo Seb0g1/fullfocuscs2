@@ -55,6 +55,7 @@ ADMIN_PUBLIC_URL=https://tiktok.sebog1.ru
 ADMIN_TELEGRAM_IDS=962443492
 ADMIN_DEV_LOGIN=false
 MEDIA_ROOT=/app/media
+DOCKER_NGINX_PORT=18080
 
 NEXT_PUBLIC_API_URL=/api
 NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=fullfocuscs2_bot
@@ -96,7 +97,7 @@ The server container runs Prisma migrations on startup.
 
 ## 5. HTTPS
 
-The Docker Nginx container listens only on `127.0.0.1:8080`. Put host Nginx with Certbot in front of it.
+The Docker Nginx container listens only on `127.0.0.1:${DOCKER_NGINX_PORT}`. The default is `18080` to avoid common conflicts with other projects. Put host Nginx with Certbot in front of it.
 
 ```bash
 sudo apt install -y nginx certbot python3-certbot-nginx
@@ -122,7 +123,7 @@ server {
   client_max_body_size 64m;
 
   location / {
-    proxy_pass http://127.0.0.1:8080;
+    proxy_pass http://127.0.0.1:18080;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -135,7 +136,7 @@ If Certbot generated the file automatically, only make sure its `location /` pro
 
 ```nginx
 location / {
-  proxy_pass http://127.0.0.1:8080;
+  proxy_pass http://127.0.0.1:18080;
   proxy_set_header Host $host;
   proxy_set_header X-Real-IP $remote_addr;
   proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;

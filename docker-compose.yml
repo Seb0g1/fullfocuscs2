@@ -66,7 +66,7 @@ services:
       - server
       - admin
     ports:
-      - "127.0.0.1:8080:80"
+      - "127.0.0.1:${DOCKER_NGINX_PORT:-18080}:80"
 
 volumes:
   postgres_data:
