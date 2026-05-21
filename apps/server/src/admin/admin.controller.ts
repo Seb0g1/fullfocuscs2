@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Param, Patch, Post, Req, Res, UseGuards } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { calculateWindowStats, type MatchStatRecord, type StatCardPayload } from "@fullfocus/shared";
 import { renderStatCard } from "@fullfocus/card-renderer";
@@ -10,7 +11,8 @@ import { PrismaService } from "../prisma.service";
 export class AdminController {
   constructor(
     private readonly auth: AuthService,
-    private readonly prisma: PrismaService
+    private readonly prisma: PrismaService,
+    private readonly config: ConfigService
   ) {}
 
   @Post("auth/telegram")
@@ -161,7 +163,7 @@ export class AdminController {
       path: "/",
       httpOnly: true,
       sameSite: "lax",
-      secure: false,
+      secure: this.config.get<string>("NODE_ENV") === "production",
       maxAge: 7 * 24 * 60 * 60
     });
   }

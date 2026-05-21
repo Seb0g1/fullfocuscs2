@@ -21,7 +21,7 @@ pnpm --filter @fullfocus/server prisma:migrate
 pnpm dev
 ```
 
-The admin runs on `http://localhost:3000`, and the API/bot server runs on `http://localhost:4000/api`.
+The admin runs on `http://localhost:5030`, and the API/bot server runs on `http://localhost:4000/api`.
 
 ## Required Production Env
 
@@ -45,3 +45,5 @@ docker compose up --build
 For production, put Nginx behind HTTPS and set `BOT_WEBHOOK_URL` to `https://your-domain/api/telegram/webhook`.
 
 Full VPS deployment instructions are in [DEPLOY.md](./DEPLOY.md).
+
+Production domain preset: `https://tiktok.sebog1.ru`. A sanitized env template is available in [.env.tiktok.example](./.env.tiktok.example).

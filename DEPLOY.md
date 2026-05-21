@@ -5,9 +5,10 @@ This guide deploys FullFocus cs2 to a VPS with Docker Compose.
 ## 1. Server Requirements
 
 - Ubuntu 22.04/24.04 VPS
-- Domain pointed to the server, for example `fullfocus.example.com`
+- Domain pointed to the server: `tiktok.sebog1.ru`
 - Docker Engine and Docker Compose plugin
 - Open ports `80` and `443`
+- DNS `A` record for `tiktok.sebog1.ru` points to the VPS IP
 
 Install Docker on a fresh Ubuntu server:
 
@@ -34,27 +35,29 @@ cp .env.example .env
 
 ## 3. Configure `.env`
 
-Fill these values:
+For this project, use `tiktok.sebog1.ru`:
 
 ```bash
 BOT_TOKEN=telegram_bot_token
-TELEGRAM_BOT_USERNAME=FullFocusCs2Bot
-BOT_WEBHOOK_URL=https://fullfocus.example.com/api/telegram/webhook
+TELEGRAM_BOT_USERNAME=fullfocuscs2_bot
+BOT_WEBHOOK_URL=https://tiktok.sebog1.ru/api/telegram/webhook
 BOT_WELCOME_IMAGE_URL=
 
 FACEIT_API_KEY=faceit_data_api_key
 STEAM_API_KEY=steam_web_api_key
 
+NODE_ENV=production
+PORT=4000
 DATABASE_URL=postgresql://fullfocus:fullfocus@postgres:5432/fullfocus?schema=public
 REDIS_URL=redis://redis:6379
 JWT_SECRET=replace-with-long-random-secret
-ADMIN_PUBLIC_URL=https://fullfocus.example.com
-ADMIN_TELEGRAM_IDS=123456789
+ADMIN_PUBLIC_URL=https://tiktok.sebog1.ru
+ADMIN_TELEGRAM_IDS=962443492
 ADMIN_DEV_LOGIN=false
 MEDIA_ROOT=/app/media
 
 NEXT_PUBLIC_API_URL=/api
-NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=FullFocusCs2Bot
+NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=fullfocuscs2_bot
 NEXT_PUBLIC_DEV_LOGIN=false
 ```
 
@@ -62,7 +65,8 @@ Notes:
 
 - `ADMIN_TELEGRAM_IDS` is a comma-separated allowlist of Telegram user IDs.
 - `BOT_WEBHOOK_URL` is applied automatically on server startup.
-- Telegram Login requires a real HTTPS domain configured for the bot.
+- Telegram Login requires `tiktok.sebog1.ru` configured for the bot in BotFather via `/setdomain`.
+- Generate `JWT_SECRET` with `openssl rand -hex 32`.
 - Keep `.env` only on the server. Do not commit it.
 
 ## 4. Start Stack
@@ -82,26 +86,46 @@ The server container runs Prisma migrations on startup.
 
 ## 5. HTTPS
 
-The included `nginx/default.conf` is HTTP-only and is meant as a base reverse proxy.
-
-Recommended production options:
-
-- Put the server behind Cloudflare Proxy with SSL enabled.
-- Or install Certbot/Nginx on the host and proxy HTTPS traffic to Docker port `80`.
-- Or replace the included Nginx container with Caddy/Traefik for automatic TLS.
-
-If using host Nginx with Certbot:
+The Docker Nginx container listens only on `127.0.0.1:8080`. Put host Nginx with Certbot in front of it.
 
 ```bash
 sudo apt install -y nginx certbot python3-certbot-nginx
-sudo certbot --nginx -d fullfocus.example.com
+sudo certbot --nginx -d tiktok.sebog1.ru
 ```
 
-Then proxy:
+Use this Nginx server block after Certbot creates the HTTPS config:
+
+```nginx
+server {
+  listen 80;
+  server_name tiktok.sebog1.ru;
+  return 301 https://$host$request_uri;
+}
+
+server {
+  listen 443 ssl http2;
+  server_name tiktok.sebog1.ru;
+
+  ssl_certificate /etc/letsencrypt/live/tiktok.sebog1.ru/fullchain.pem;
+  ssl_certificate_key /etc/letsencrypt/live/tiktok.sebog1.ru/privkey.pem;
+
+  client_max_body_size 64m;
+
+  location / {
+    proxy_pass http://127.0.0.1:8080;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+  }
+}
+```
+
+If Certbot generated the file automatically, only make sure its `location /` proxies to Docker:
 
 ```nginx
 location / {
-  proxy_pass http://127.0.0.1:80;
+  proxy_pass http://127.0.0.1:8080;
   proxy_set_header Host $host;
   proxy_set_header X-Real-IP $remote_addr;
   proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -112,15 +136,15 @@ location / {
 ## 6. Smoke Checks
 
 ```bash
-curl https://fullfocus.example.com/api/health
+curl https://tiktok.sebog1.ru/api/health
 docker compose logs -f server
 docker compose logs -f admin
 ```
 
 Open:
 
-- Admin panel: `https://fullfocus.example.com/login`
-- API health: `https://fullfocus.example.com/api/health`
+- Admin panel: `https://tiktok.sebog1.ru/login`
+- API health: `https://tiktok.sebog1.ru/api/health`
 
 In Telegram:
 

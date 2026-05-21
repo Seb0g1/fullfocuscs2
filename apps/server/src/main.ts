@@ -11,7 +11,7 @@ import { AppModule } from "./app.module";
 async function bootstrap() {
   const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter({ logger: true }));
   const config = app.get(ConfigService);
-  const adminOrigin = config.get<string>("ADMIN_PUBLIC_URL") ?? "http://localhost:3000";
+  const adminOrigin = config.get<string>("ADMIN_PUBLIC_URL") ?? "http://localhost:5030";
   const mediaRootConfig = config.get<string>("MEDIA_ROOT") ?? "media";
   const mediaRoot = isAbsolute(mediaRootConfig) ? mediaRootConfig : join(process.cwd(), mediaRootConfig);
 
@@ -28,7 +28,7 @@ async function bootstrap() {
 
   app.setGlobalPrefix("api");
   app.enableCors({
-    origin: [adminOrigin, "http://localhost:3000"],
+    origin: [adminOrigin, "http://localhost:5030", "http://localhost:3000"],
     credentials: true
   });
 

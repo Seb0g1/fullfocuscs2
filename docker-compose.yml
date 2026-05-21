@@ -43,12 +43,16 @@ services:
       redis:
         condition: service_healthy
     ports:
-      - "4000:4000"
+      - "127.0.0.1:4000:4000"
 
   admin:
     build:
       context: .
       dockerfile: apps/admin/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api}
+        NEXT_PUBLIC_TELEGRAM_BOT_USERNAME: ${NEXT_PUBLIC_TELEGRAM_BOT_USERNAME:-fullfocuscs2_bot}
+        NEXT_PUBLIC_DEV_LOGIN: ${NEXT_PUBLIC_DEV_LOGIN:-false}
     env_file:
       - .env
     environment:
@@ -56,7 +60,7 @@ services:
     depends_on:
       - server
     ports:
-      - "3000:3000"
+      - "127.0.0.1:5030:5030"
 
   nginx:
     image: nginx:1.27-alpine
@@ -66,7 +70,7 @@ services:
       - server
       - admin
     ports:
-      - "80:80"
+      - "127.0.0.1:8080:80"
 
 volumes:
   postgres_data:
