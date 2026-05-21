@@ -71,6 +71,13 @@ Notes:
 
 ## 4. Start Stack
 
+If you are already in `~/fullfocuscs2`, do not run `cd fullfocuscs2` again. Check with:
+
+```bash
+pwd
+ls
+```
+
 ```bash
 docker compose up -d --build
 docker compose ps
@@ -160,6 +167,43 @@ git pull
 docker compose up -d --build
 docker compose exec server corepack pnpm --filter @fullfocus/server prisma:seed
 docker compose logs -f server
+```
+
+## 9. Troubleshooting
+
+### `unknown shorthand flag: 'd' in -d`
+
+This means Docker Compose v2 is not available. Install the Compose plugin:
+
+```bash
+sudo apt update
+sudo apt install -y docker-compose-plugin
+docker compose version
+```
+
+If `docker-compose` v1 is installed instead, either install the v2 plugin above or use the legacy command names:
+
+```bash
+docker-compose up -d --build
+docker-compose exec server sh -lc 'corepack pnpm --filter @fullfocus/server prisma:seed'
+docker-compose logs -f server
+```
+
+### `unknown flag: --filter`
+
+This happens when the `docker compose exec ...` command is not being handled by Compose. After installing `docker-compose-plugin`, run:
+
+```bash
+docker compose exec server sh -lc 'corepack pnpm --filter @fullfocus/server prisma:seed'
+```
+
+### `cd: fullfocuscs2: No such file or directory`
+
+You are probably already inside the project directory. Run:
+
+```bash
+pwd
+git pull
 ```
 
 ## 8. Backups
