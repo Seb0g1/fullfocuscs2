@@ -1,0 +1,116 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AdminRole {
+  OWNER
+  ADMIN
+  EDITOR
+}
+
+enum GrenadeSide {
+  T
+  CT
+  BOTH
+}
+
+enum GrenadeType {
+  SMOKE
+  FLASH
+  MOLOTOV
+  HE
+}
+
+enum GrenadeDifficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+enum MediaType {
+  IMAGE
+  VIDEO
+  EXTERNAL
+}
+
+model AdminUser {
+  id         String    @id @default(cuid())
+  telegramId String   @unique
+  username   String?
+  firstName  String?
+  role       AdminRole @default(EDITOR)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+}
+
+model CsMap {
+  id        String           @id @default(cuid())
+  slug      String           @unique
+  name      String
+  active    Boolean          @default(true)
+  sortOrder Int              @default(0)
+  lineups   GrenadeLineup[]
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+}
+
+model GrenadeLineup {
+  id           String             @id @default(cuid())
+  mapId        String
+  map          CsMap              @relation(fields: [mapId], references: [id], onDelete: Cascade)
+  side         GrenadeSide
+  grenadeType  GrenadeType
+  fromPosition String
+  toPosition   String
+  title        String
+  description  String
+  difficulty   GrenadeDifficulty  @default(EASY)
+  tags         String[]           @default([])
+  mediaType    MediaType
+  mediaUrl     String
+  thumbnailUrl String?
+  published    Boolean            @default(false)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  @@index([mapId, published])
+  @@index([grenadeType, side])
+}
+
+model BotUser {
+  id              String   @id @default(cuid())
+  telegramId      String   @unique
+  username        String?
+  firstName       String?
+  faceitPlayerId  String?
+  faceitNickname  String?
+  lastElo         Int?
+  requests        Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  lastSeenAt      DateTime @default(now())
+}
+
+model PlayerQueryLog {
+  id             String   @id @default(cuid())
+  telegramId     String?
+  query          String
+  faceitPlayerId String?
+  faceitNickname String?
+  status         String
+  createdAt      DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([faceitPlayerId])
+}
+
+model BotSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}

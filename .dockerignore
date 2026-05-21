@@ -1,0 +1,14 @@
+.git
+.next
+dist
+node_modules
+coverage
+media
+uploads
+*.log
+*.tsbuildinfo
+.env
+.env.local
+.env.*.local
+admin-dev.out.log
+admin-dev.err.log
