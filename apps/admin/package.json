@@ -6,9 +6,9 @@
     "dev": "next dev -p 5030",
     "build": "next build",
     "start": "next start -p 5030",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "next typegen && tsc -p tsconfig.json --noEmit",
     "test": "vitest run --passWithNoTests",
-    "lint": "tsc -p tsconfig.json --noEmit"
+    "lint": "next typegen && tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.81.5",

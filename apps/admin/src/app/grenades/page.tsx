@@ -1,8 +1,8 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bomb, Check, ImageUp, Plus, Save, Trash2 } from "lucide-react";
-import { FormEvent, useState } from "react";
+import { AlertTriangle, Bomb, Check, ImageUp, Loader2, Plus, Save, Trash2 } from "lucide-react";
+import { FormEvent, useEffect, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { AuthGate } from "@/components/auth-gate";
 import { api, mediaUrl } from "@/lib/api";
@@ -62,8 +62,15 @@ export default function GrenadesPage() {
 function Grenades() {
   const queryClient = useQueryClient();
   const [form, setForm] = useState(emptyForm);
+  const [error, setError] = useState<string | null>(null);
   const maps = useQuery({ queryKey: ["maps"], queryFn: () => api<CsMap[]>("/admin/maps") });
   const lineups = useQuery({ queryKey: ["lineups"], queryFn: () => api<Lineup[]>("/admin/grenades") });
+
+  useEffect(() => {
+    if (!form.mapId && maps.data?.[0]?.id) {
+      setForm((current) => ({ ...current, mapId: maps.data[0].id }));
+    }
+  }, [form.mapId, maps.data]);
 
   const create = useMutation({
     mutationFn: () =>
@@ -79,34 +86,48 @@ function Grenades() {
         })
       }),
     onSuccess: async () => {
+      setError(null);
       setForm({ ...emptyForm, mapId: maps.data?.[0]?.id ?? "" });
       await queryClient.invalidateQueries({ queryKey: ["lineups"] });
       await queryClient.invalidateQueries({ queryKey: ["overview"] });
-    }
+    },
+    onError: (mutationError) => setError(mutationError instanceof Error ? mutationError.message : "Не удалось сохранить раскид")
   });
 
   const update = useMutation({
     mutationFn: ({ id, body }: { id: string; body: Partial<Lineup> }) =>
       api(`/admin/grenades/${id}`, { method: "PUT", body: JSON.stringify(body) }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["lineups"] })
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["lineups"] }),
+    onError: (mutationError) => setError(mutationError instanceof Error ? mutationError.message : "Не удалось обновить раскид")
   });
 
   const remove = useMutation({
     mutationFn: (id: string) => api(`/admin/grenades/${id}`, { method: "DELETE" }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["lineups"] })
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["lineups"] }),
+    onError: (mutationError) => setError(mutationError instanceof Error ? mutationError.message : "Не удалось удалить раскид")
   });
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    setError(null);
+    if (!form.mapId || !form.title.trim() || !form.from.trim() || !form.to.trim() || !form.mediaUrl.trim()) {
+      setError("Заполни карту, название, позиции и media URL.");
+      return;
+    }
     await create.mutateAsync();
   }
 
   async function upload(file: File | null) {
     if (!file) return;
+    setError(null);
     const body = new FormData();
     body.append("file", file);
-    const result = await api<{ url: string }>("/admin/media", { method: "POST", body });
-    setForm((current) => ({ ...current, mediaUrl: result.url }));
+    try {
+      const result = await api<{ url: string }>("/admin/media", { method: "POST", body });
+      setForm((current) => ({ ...current, mediaUrl: result.url }));
+    } catch (uploadError) {
+      setError(uploadError instanceof Error ? uploadError.message : "Не удалось загрузить файл");
+    }
   }
 
   const mapOptions = maps.data ?? [];
@@ -118,6 +139,13 @@ function Grenades() {
         <p className="text-sm uppercase tracking-[0.4em] text-focus">Контент</p>
         <h1 className="mt-2 text-3xl font-black sm:text-5xl">Раскиды гранат</h1>
       </header>
+
+      {error ? (
+        <div className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-red-100">
+          <AlertTriangle size={18} />
+          {error}
+        </div>
+      ) : null}
 
       <section className="grid gap-6 xl:grid-cols-[430px_1fr]">
         <form onSubmit={submit} className="panel space-y-4 p-5">
@@ -135,7 +163,7 @@ function Grenades() {
               ))}
             </select>
           </label>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <label className="block text-sm text-zinc-400">
               Тип
               <select className="field mt-2" value={form.grenadeType} onChange={(event) => setForm({ ...form, grenadeType: event.target.value })}>
@@ -162,7 +190,7 @@ function Grenades() {
               </select>
             </label>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <input className="field" placeholder="Откуда" value={form.from} onChange={(event) => setForm({ ...form, from: event.target.value })} />
             <input className="field" placeholder="Куда" value={form.to} onChange={(event) => setForm({ ...form, to: event.target.value })} />
           </div>
@@ -176,22 +204,18 @@ function Grenades() {
           <input className="field" placeholder="Теги через запятую" value={form.tags} onChange={(event) => setForm({ ...form, tags: event.target.value })} />
           <div className="grid grid-cols-[1fr_auto] gap-3">
             <input className="field" placeholder="Media URL" value={form.mediaUrl} onChange={(event) => setForm({ ...form, mediaUrl: event.target.value })} />
-            <label className="btn btn-ghost cursor-pointer">
+            <label className="btn btn-ghost cursor-pointer" title="Загрузить медиа">
               <ImageUp size={18} />
               <input className="hidden" type="file" accept="image/*,video/*" onChange={(event) => upload(event.target.files?.[0] ?? null)} />
             </label>
           </div>
           {form.mediaUrl ? <img src={mediaUrl(form.mediaUrl)} alt="" className="h-36 w-full rounded-lg border border-white/10 object-cover" /> : null}
           <label className="flex items-center gap-2 text-sm text-zinc-300">
-            <input
-              type="checkbox"
-              checked={form.published}
-              onChange={(event) => setForm({ ...form, published: event.target.checked })}
-            />
+            <input type="checkbox" checked={form.published} onChange={(event) => setForm({ ...form, published: event.target.checked })} />
             Опубликовать сразу
           </label>
           <button className="btn btn-primary w-full" disabled={create.isPending || !selectedMapId} type="submit">
-            <Save size={18} />
+            {create.isPending ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
             Сохранить
           </button>
         </form>
@@ -214,33 +238,48 @@ function Grenades() {
                 </tr>
               </thead>
               <tbody>
-                {(lineups.data ?? []).map((lineup) => (
-                  <tr key={lineup.id} className="border-t border-white/10">
-                    <td className="px-3 py-4">
-                      <div className="font-bold">{lineup.title}</div>
-                      <div className="text-zinc-500">
-                        {lineup.from} → {lineup.to}
-                      </div>
-                    </td>
-                    <td className="px-3 py-4">{lineup.mapName}</td>
-                    <td className="px-3 py-4 uppercase text-focus">{lineup.grenadeType}</td>
-                    <td className="px-3 py-4 uppercase">{lineup.side}</td>
-                    <td className="px-3 py-4">
-                      <button
-                        className="btn btn-ghost h-9"
-                        onClick={() => update.mutate({ id: lineup.id, body: { published: !lineup.published } })}
-                      >
-                        <Check size={16} />
-                        {lineup.published ? "Live" : "Draft"}
-                      </button>
-                    </td>
-                    <td className="px-3 py-4 text-right">
-                      <button className="btn btn-ghost h-9" onClick={() => remove.mutate(lineup.id)}>
-                        <Trash2 size={16} />
-                      </button>
+                {lineups.isLoading ? (
+                  <tr>
+                    <td className="px-3 py-8 text-center text-zinc-500" colSpan={6}>
+                      Загружаем каталог...
                     </td>
                   </tr>
-                ))}
+                ) : (lineups.data ?? []).length ? (
+                  lineups.data?.map((lineup) => (
+                    <tr key={lineup.id} className="border-t border-white/10">
+                      <td className="px-3 py-4">
+                        <div className="font-bold">{lineup.title}</div>
+                        <div className="text-zinc-500">
+                          {lineup.from} → {lineup.to}
+                        </div>
+                      </td>
+                      <td className="px-3 py-4">{lineup.mapName}</td>
+                      <td className="px-3 py-4 uppercase text-focus">{lineup.grenadeType}</td>
+                      <td className="px-3 py-4 uppercase">{lineup.side}</td>
+                      <td className="px-3 py-4">
+                        <button
+                          className="btn btn-ghost h-9"
+                          disabled={update.isPending}
+                          onClick={() => update.mutate({ id: lineup.id, body: { published: !lineup.published } })}
+                        >
+                          <Check size={16} />
+                          {lineup.published ? "Live" : "Draft"}
+                        </button>
+                      </td>
+                      <td className="px-3 py-4 text-right">
+                        <button className="btn btn-ghost h-9" disabled={remove.isPending} onClick={() => remove.mutate(lineup.id)} title="Удалить">
+                          <Trash2 size={16} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td className="px-3 py-8 text-center text-zinc-500" colSpan={6}>
+                      Каталог пуст. Добавь первый раскид слева и опубликуй его для бота.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>

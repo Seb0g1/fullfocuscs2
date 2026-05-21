@@ -93,3 +93,14 @@ textarea {
 .btn-ghost {
   background: rgba(255, 255, 255, 0.045);
 }
+
+.telegram-widget-box {
+  display: flex;
+  min-height: 46px;
+  align-items: center;
+}
+
+.telegram-widget-box iframe {
+  display: block;
+  max-width: 100%;
+}

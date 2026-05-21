@@ -113,6 +113,7 @@ export class AdminController {
     });
   }
 
+  @Get("cards/preview")
   @Post("cards/preview")
   @UseGuards(AdminGuard)
   async preview(@Res() reply: FastifyReply) {

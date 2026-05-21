@@ -78,7 +78,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     });
     bot.action("settings", async (ctx) => {
       await ctx.answerCbQuery();
-      await ctx.reply("Настройки скоро появятся здесь. Сейчас бот запоминает последнего найденного FACEIT игрока для лидерборда.");
+      await ctx.reply("Настройки появятся здесь позже. Сейчас бот запоминает последнего найденного FACEIT игрока для лидерборда.");
     });
     bot.action("grenades", async (ctx) => {
       await ctx.answerCbQuery();
@@ -147,7 +147,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       await ctx.replyWithPhoto(
         { source: image },
         {
-          caption: `🎯 ${payload.player.nickname}: ELO ${payload.player.elo}, LVL ${payload.player.skillLevel}, K/D ${payload.currentWindow.kd}`,
+          caption: `Статистика ${payload.player.nickname}: ELO ${payload.player.elo}, LVL ${payload.player.skillLevel}, K/D ${payload.currentWindow.kd}`,
           ...this.afterStatsKeyboard(payload.player.nickname)
         }
       );
@@ -171,7 +171,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       await ctx.replyWithPhoto(
         { source: image },
         {
-          caption: `⚔️ ${payload.left.player.nickname} vs ${payload.right.player.nickname}`,
+          caption: `${payload.left.player.nickname} vs ${payload.right.player.nickname}`,
           ...this.menuKeyboard()
         }
       );
@@ -189,7 +189,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     const text = rows
       .map((row, index) => `${index + 1}. ${row.faceitNickname ?? row.username ?? row.telegramId} · ELO ${row.lastElo}`)
       .join("\n");
-    await ctx.reply(`🏆 Лидерборд FullFocus\n\n${text}`, this.menuKeyboard());
+    await ctx.reply(`Лидерборд FullFocus\n\n${text}`, this.menuKeyboard());
   }
 
   private async sendGrenadeMaps(ctx: Context) {
@@ -238,7 +238,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       await ctx.reply("Раскид не найден или снят с публикации.", this.menuKeyboard());
       return;
     }
-    const text = `💣 ${lineup.mapName} · ${lineup.grenadeType.toUpperCase()}\n${lineup.title}\n\nОткуда: ${lineup.from}\nКуда: ${lineup.to}\nСложность: ${lineup.difficulty}\n\n${lineup.description}`;
+    const text = `${lineup.mapName} · ${lineup.grenadeType.toUpperCase()}\n${lineup.title}\n\nОткуда: ${lineup.from}\nКуда: ${lineup.to}\nСложность: ${lineup.difficulty}\n\n${lineup.description}`;
     if (lineup.mediaType === "image") {
       await ctx.replyWithPhoto(lineup.mediaUrl, { caption: text, ...this.menuKeyboard() });
     } else if (lineup.mediaType === "video") {
@@ -251,14 +251,14 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
   private menuKeyboard() {
     return Markup.inlineKeyboard([
       [
-        Markup.button.callback("📈 Статистика", "stats"),
-        Markup.button.callback("⚔️ Сравнить", "compare")
+        Markup.button.callback("Статистика", "stats"),
+        Markup.button.callback("Сравнить", "compare")
       ],
       [
-        Markup.button.callback("💣 Раскид гранат", "grenades"),
-        Markup.button.callback("🏆 Лидерборд", "leaderboard")
+        Markup.button.callback("Раскид гранат", "grenades"),
+        Markup.button.callback("Лидерборд", "leaderboard")
       ],
-      [Markup.button.callback("⚙️ Настройки", "settings")]
+      [Markup.button.callback("Настройки", "settings")]
     ]);
   }
 
@@ -266,8 +266,8 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     return Markup.inlineKeyboard([
       [Markup.button.url("Открыть FACEIT", `https://www.faceit.com/ru/players/${encodeURIComponent(nickname)}`)],
       [
-        Markup.button.callback("📈 Новый поиск", "stats"),
-        Markup.button.callback("🏠 Меню", "menu")
+        Markup.button.callback("Новый поиск", "stats"),
+        Markup.button.callback("Меню", "menu")
       ]
     ]);
   }

@@ -30,12 +30,12 @@ newgrp docker
 ```bash
 git clone https://github.com/Seb0g1/fullfocuscs2.git
 cd fullfocuscs2
-cp .env.example .env
+cp .env.tiktok.example .env
 ```
 
 ## 3. Configure `.env`
 
-For this project, use `tiktok.sebog1.ru`:
+Use `tiktok.sebog1.ru` for production:
 
 ```bash
 BOT_TOKEN=telegram_bot_token
@@ -124,10 +124,13 @@ server {
 
   location / {
     proxy_pass http://127.0.0.1:18080;
+    proxy_http_version 1.1;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
   }
 }
 ```
@@ -137,16 +140,27 @@ If Certbot generated the file automatically, only make sure its `location /` pro
 ```nginx
 location / {
   proxy_pass http://127.0.0.1:18080;
+  proxy_http_version 1.1;
   proxy_set_header Host $host;
   proxy_set_header X-Real-IP $remote_addr;
   proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
   proxy_set_header X-Forwarded-Proto $scheme;
+  proxy_set_header Upgrade $http_upgrade;
+  proxy_set_header Connection "upgrade";
 }
+```
+
+Reload Nginx:
+
+```bash
+sudo nginx -t
+sudo systemctl reload nginx
 ```
 
 ## 6. Smoke Checks
 
 ```bash
+curl http://127.0.0.1:18080/api/health
 curl https://tiktok.sebog1.ru/api/health
 docker compose logs -f server
 docker compose logs -f admin
@@ -174,7 +188,7 @@ docker compose exec server sh -lc 'corepack pnpm --filter @fullfocus/server pris
 docker compose logs -f server
 ```
 
-## 9. Troubleshooting
+## 8. Troubleshooting
 
 ### `unknown shorthand flag: 'd' in -d`
 
@@ -204,6 +218,16 @@ This happens when the `docker compose exec ...` command is not being handled by 
 docker compose exec server sh -lc 'corepack pnpm --filter @fullfocus/server prisma:seed'
 ```
 
+### `address already in use`
+
+If `18080` is also used by another project, change only this value in `.env`:
+
+```bash
+DOCKER_NGINX_PORT=18081
+```
+
+Then restart the stack and update host Nginx `proxy_pass` to the same port.
+
 ### `cd: fullfocuscs2: No such file or directory`
 
 You are probably already inside the project directory. Run:
@@ -213,7 +237,7 @@ pwd
 git pull
 ```
 
-## 8. Backups
+## 9. Backups
 
 Database backup:
 
