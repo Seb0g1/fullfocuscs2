@@ -78,7 +78,10 @@ pwd
 ls
 ```
 
+PostgreSQL and Redis are intentionally not published to host ports. They are available only inside the Docker Compose network as `postgres:5432` and `redis:6379`, so they will not conflict with other projects on the VPS.
+
 ```bash
+docker compose down
 docker compose up -d --build
 docker compose ps
 ```
@@ -86,7 +89,7 @@ docker compose ps
 Run the seed once to create default CS2 maps and welcome settings:
 
 ```bash
-docker compose exec server corepack pnpm --filter @fullfocus/server prisma:seed
+docker compose exec server sh -lc 'corepack pnpm --filter @fullfocus/server prisma:seed'
 ```
 
 The server container runs Prisma migrations on startup.
@@ -164,8 +167,9 @@ In Telegram:
 
 ```bash
 git pull
+docker compose down
 docker compose up -d --build
-docker compose exec server corepack pnpm --filter @fullfocus/server prisma:seed
+docker compose exec server sh -lc 'corepack pnpm --filter @fullfocus/server prisma:seed'
 docker compose logs -f server
 ```
 
@@ -184,6 +188,8 @@ docker compose version
 If `docker-compose` v1 is installed instead, either install the v2 plugin above or use the legacy command names:
 
 ```bash
+git pull
+docker-compose down
 docker-compose up -d --build
 docker-compose exec server sh -lc 'corepack pnpm --filter @fullfocus/server prisma:seed'
 docker-compose logs -f server
