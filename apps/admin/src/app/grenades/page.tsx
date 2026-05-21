@@ -2,9 +2,10 @@
 
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Bomb, Check, Eye, ImageUp, Loader2, Pencil, Plus, Save, Trash2, X } from "lucide-react";
-import { FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { AuthGate } from "@/components/auth-gate";
+import { SelectField, type SelectOption } from "@/components/select-field";
 import { api, mediaUrl } from "@/lib/api";
 
 type Side = "t" | "ct" | "both";
@@ -93,6 +94,31 @@ const grenadeLabels: Record<GrenadeType, string> = {
   he: "HE"
 };
 
+const sideOptions: SelectOption[] = [
+  { value: "t", label: "T" },
+  { value: "ct", label: "CT" },
+  { value: "both", label: "T/CT" }
+];
+
+const grenadeTypeOptions: SelectOption[] = [
+  { value: "smoke", label: "Смоки" },
+  { value: "flash", label: "Флешки" },
+  { value: "molotov", label: "Молики" },
+  { value: "he", label: "HE" }
+];
+
+const difficultyOptions: SelectOption[] = [
+  { value: "easy", label: "Легко" },
+  { value: "medium", label: "Средне" },
+  { value: "hard", label: "Сложно" }
+];
+
+const statusOptions: SelectOption[] = [
+  { value: "", label: "Статус" },
+  { value: "true", label: "Live" },
+  { value: "false", label: "Draft" }
+];
+
 export default function GrenadesPage() {
   return (
     <AuthGate>
@@ -125,11 +151,13 @@ function Grenades() {
   const mapOptions = maps.data ?? [];
   const selectedMap = mapOptions.find((map) => map.id === form.mapId) ?? mapOptions[0];
   const selectedMapId = form.mapId || selectedMap?.id || "";
+  const mapSelectOptions = mapOptions.map((map) => ({ value: map.id, label: map.name }));
+  const filterMapOptions = [{ value: "", label: "Все карты" }, ...mapSelectOptions];
   const mediaItems = useMemo(() => parseMediaItems(form.mediaItemsText, form.title, form.thumbnailUrl), [form.mediaItemsText, form.title, form.thumbnailUrl]);
   const firstMedia = mediaItems[0];
 
   const create = useMutation({
-    mutationFn: () => api("/admin/grenades", { method: "POST", body: JSON.stringify(toPayload(form)) }),
+    mutationFn: (body: ReturnType<typeof toPayload>) => api("/admin/grenades", { method: "POST", body: JSON.stringify(body) }),
     onSuccess: async () => {
       setError(null);
       resetForm(mapOptions[0]?.id);
@@ -172,7 +200,7 @@ function Grenades() {
       resetForm(selectedMapId);
       return;
     }
-    await create.mutateAsync();
+    await create.mutateAsync(payload);
   }
 
   async function upload(file: File | null, target: "lineup" | "overview") {
@@ -262,19 +290,21 @@ function Grenades() {
             ) : null}
           </div>
 
-          <label className="block text-sm text-zinc-400">
-            Карта
-            <select className="field mt-2" value={selectedMapId} onChange={(event) => setForm({ ...form, mapId: event.target.value })}>
-              {mapOptions.map((map) => (
-                <option key={map.id} value={map.id}>
-                  {map.name}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
-            <div className="mb-3 flex items-center justify-between gap-3">
+          <div className="space-y-3 border-t border-white/10 pt-4">
+            <div className="text-xs font-black uppercase tracking-[0.28em] text-focus">Карта</div>
+            {maps.isError ? (
+              <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-100">Не удалось загрузить список карт.</div>
+            ) : null}
+            <SelectField
+              label="Карта"
+              className="mt-2"
+              value={selectedMapId}
+              options={mapSelectOptions}
+              placeholder={maps.isLoading ? "Загружаем карты..." : "Выбери карту"}
+              disabled={maps.isLoading || !mapSelectOptions.length}
+              onChange={(value) => setForm({ ...form, mapId: value })}
+            />
+            <div className="flex items-center justify-between gap-3">
               <div>
                 <div className="text-sm font-bold text-zinc-200">Overview карты</div>
                 <div className="text-xs text-zinc-500">Отправляется перед выбором T/CT в боте</div>
@@ -292,47 +322,38 @@ function Grenades() {
             )}
           </div>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <Select label="Сторона" value={form.side} onChange={(value) => setForm({ ...form, side: value as Side })}>
-              <option value="t">T</option>
-              <option value="ct">CT</option>
-              <option value="both">T/CT</option>
-            </Select>
-            <Select label="Тип" value={form.grenadeType} onChange={(value) => setForm({ ...form, grenadeType: value as GrenadeType })}>
-              <option value="smoke">Смоки</option>
-              <option value="flash">Флешки</option>
-              <option value="molotov">Молики</option>
-              <option value="he">HE</option>
-            </Select>
-            <Select label="Сложность" value={form.difficulty} onChange={(value) => setForm({ ...form, difficulty: value as Difficulty })}>
-              <option value="easy">Легко</option>
-              <option value="medium">Средне</option>
-              <option value="hard">Сложно</option>
-            </Select>
+          <div className="space-y-3 border-t border-white/10 pt-4">
+            <div className="text-xs font-black uppercase tracking-[0.28em] text-focus">Flow</div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <SelectField label="Сторона" className="mt-2" value={form.side} options={sideOptions} onChange={(value) => setForm({ ...form, side: value as Side })} />
+              <SelectField label="Тип" className="mt-2" value={form.grenadeType} options={grenadeTypeOptions} onChange={(value) => setForm({ ...form, grenadeType: value as GrenadeType })} />
+              <SelectField label="Сложность" className="mt-2" value={form.difficulty} options={difficultyOptions} onChange={(value) => setForm({ ...form, difficulty: value as Difficulty })} />
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <input className="field" placeholder="Часть карты: Мид, A, B" value={form.area} onChange={(event) => setForm({ ...form, area: event.target.value })} />
+              <input className="field" placeholder="Slug части (авто)" value={form.areaSlug} onChange={(event) => setForm({ ...form, areaSlug: event.target.value })} />
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <input className="field" placeholder="Откуда" value={form.from} onChange={(event) => setForm({ ...form, from: event.target.value })} />
+              <input className="field" placeholder="Куда / позиция кнопки" value={form.to} onChange={(event) => setForm({ ...form, to: event.target.value })} />
+            </div>
+            <input className="field" placeholder="Slug позиции (авто)" value={form.positionSlug} onChange={(event) => setForm({ ...form, positionSlug: event.target.value })} />
+            <input className="field" placeholder="Название" value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} />
+            <textarea
+              className="field min-h-28 resize-y"
+              placeholder="Описание и порядок действий"
+              value={form.description}
+              onChange={(event) => setForm({ ...form, description: event.target.value })}
+            />
+            <input className="field" placeholder="Теги через запятую" value={form.tags} onChange={(event) => setForm({ ...form, tags: event.target.value })} />
           </div>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <input className="field" placeholder="Часть карты: Мид, A, B" value={form.area} onChange={(event) => setForm({ ...form, area: event.target.value })} />
-            <input className="field" placeholder="Slug части, можно пустым" value={form.areaSlug} onChange={(event) => setForm({ ...form, areaSlug: event.target.value })} />
-          </div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <input className="field" placeholder="Откуда" value={form.from} onChange={(event) => setForm({ ...form, from: event.target.value })} />
-            <input className="field" placeholder="Куда / позиция кнопки" value={form.to} onChange={(event) => setForm({ ...form, to: event.target.value })} />
-          </div>
-          <input className="field" placeholder="Slug позиции, можно пустым" value={form.positionSlug} onChange={(event) => setForm({ ...form, positionSlug: event.target.value })} />
-          <input className="field" placeholder="Название" value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} />
-          <textarea
-            className="field min-h-28 resize-y"
-            placeholder="Описание и порядок действий"
-            value={form.description}
-            onChange={(event) => setForm({ ...form, description: event.target.value })}
-          />
-          <input className="field" placeholder="Теги через запятую" value={form.tags} onChange={(event) => setForm({ ...form, tags: event.target.value })} />
-
-          <div className="space-y-3">
+          <div className="space-y-3 border-t border-white/10 pt-4">
+            <div className="text-xs font-black uppercase tracking-[0.28em] text-focus">Медиа</div>
             <div className="flex items-center justify-between gap-3">
               <div>
-                <div className="text-sm font-bold text-zinc-200">Медиа</div>
+                <div className="text-sm font-bold text-zinc-200">Файлы раскида</div>
                 <div className="text-xs text-zinc-500">Одна строка = один файл. Можно добавить caption через `url | caption`.</div>
               </div>
               <label className="btn btn-ghost h-9 cursor-pointer">
@@ -350,57 +371,48 @@ function Grenades() {
             <input className="field" placeholder="Thumbnail URL, если нужен" value={form.thumbnailUrl} onChange={(event) => setForm({ ...form, thumbnailUrl: event.target.value })} />
           </div>
 
-          <label className="flex items-center gap-2 text-sm text-zinc-300">
-            <input type="checkbox" checked={form.published} onChange={(event) => setForm({ ...form, published: event.target.checked })} />
-            Опубликовать в боте
-          </label>
+          <div className="space-y-3 border-t border-white/10 pt-4">
+            <div className="text-xs font-black uppercase tracking-[0.28em] text-focus">Публикация</div>
+            <label className="flex items-center gap-2 text-sm text-zinc-300">
+              <input type="checkbox" checked={form.published} onChange={(event) => setForm({ ...form, published: event.target.checked })} />
+              Опубликовать в боте
+            </label>
+          </div>
 
           <button className="btn btn-primary w-full" disabled={create.isPending || update.isPending || !selectedMapId} type="submit">
             {create.isPending || update.isPending ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
             {editingId ? "Сохранить изменения" : "Сохранить раскид"}
           </button>
 
-          <TelegramPreview form={form} firstMedia={firstMedia} selectedMap={selectedMap} />
+          <TelegramPreview form={form} mediaItems={mediaItems} firstMedia={firstMedia} selectedMap={selectedMap} />
         </form>
 
         <div className="panel overflow-hidden p-5">
-          <div className="mb-4 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+          <div className="mb-4 flex flex-col gap-4 2xl:flex-row 2xl:items-center 2xl:justify-between">
             <div className="flex items-center gap-2">
               <Bomb className="text-focus" size={20} />
               <h2 className="text-xl font-black">Каталог</h2>
             </div>
-            <div className="grid gap-2 sm:grid-cols-5">
-              <select className="field h-10" value={filters.mapId} onChange={(event) => setFilters({ ...filters, mapId: event.target.value })}>
-                <option value="">Все карты</option>
-                {mapOptions.map((map) => (
-                  <option key={map.id} value={map.id}>
-                    {map.name}
-                  </option>
-                ))}
-              </select>
-              <select className="field h-10" value={filters.side} onChange={(event) => setFilters({ ...filters, side: event.target.value })}>
-                <option value="">Сторона</option>
-                <option value="t">T</option>
-                <option value="ct">CT</option>
-                <option value="both">T/CT</option>
-              </select>
-              <select className="field h-10" value={filters.type} onChange={(event) => setFilters({ ...filters, type: event.target.value })}>
-                <option value="">Тип</option>
-                <option value="smoke">Смоки</option>
-                <option value="flash">Флешки</option>
-                <option value="molotov">Молики</option>
-                <option value="he">HE</option>
-              </select>
-              <input className="field h-10" placeholder="area slug" value={filters.areaSlug} onChange={(event) => setFilters({ ...filters, areaSlug: event.target.value })} />
-              <select className="field h-10" value={filters.published} onChange={(event) => setFilters({ ...filters, published: event.target.value })}>
-                <option value="">Статус</option>
-                <option value="true">Live</option>
-                <option value="false">Draft</option>
-              </select>
+            <div className="grid w-full gap-2 sm:grid-cols-2 2xl:grid-cols-5">
+              <SelectField value={filters.mapId} options={filterMapOptions} disabled={maps.isLoading} onChange={(value) => setFilters({ ...filters, mapId: value })} />
+              <SelectField value={filters.side} options={[{ value: "", label: "Сторона" }, ...sideOptions]} onChange={(value) => setFilters({ ...filters, side: value })} />
+              <SelectField value={filters.type} options={[{ value: "", label: "Тип" }, ...grenadeTypeOptions]} onChange={(value) => setFilters({ ...filters, type: value })} />
+              <input className="field h-10" placeholder="slug части" value={filters.areaSlug} onChange={(event) => setFilters({ ...filters, areaSlug: event.target.value })} />
+              <SelectField value={filters.published} options={statusOptions} onChange={(value) => setFilters({ ...filters, published: value })} />
             </div>
           </div>
 
-          <div className="overflow-x-auto">
+          {lineups.isError ? (
+            <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-100">Не удалось загрузить каталог. Проверь API и попробуй обновить страницу.</div>
+          ) : lineups.isLoading ? (
+            <div className="grid min-h-56 place-items-center rounded-lg border border-white/10 text-sm text-zinc-500">
+              <div className="flex items-center gap-2">
+                <Loader2 size={18} className="animate-spin text-focus" />
+                Загружаем каталог...
+              </div>
+            </div>
+          ) : (lineups.data ?? []).length ? (
+          <div className="overflow-x-auto rounded-lg border border-white/10">
             <table className="w-full min-w-[960px] text-left text-sm">
               <thead className="text-xs uppercase tracking-[0.22em] text-zinc-500">
                 <tr>
@@ -413,14 +425,7 @@ function Grenades() {
                 </tr>
               </thead>
               <tbody>
-                {lineups.isLoading ? (
-                  <tr>
-                    <td className="px-3 py-8 text-center text-zinc-500" colSpan={6}>
-                      Загружаем каталог...
-                    </td>
-                  </tr>
-                ) : (lineups.data ?? []).length ? (
-                  lineups.data?.map((lineup) => (
+                {lineups.data?.map((lineup) => (
                     <tr key={lineup.id} className="border-t border-white/10">
                       <td className="px-3 py-4">
                         <div className="font-bold">{lineup.title}</div>
@@ -454,40 +459,33 @@ function Grenades() {
                         </div>
                       </td>
                     </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td className="px-3 py-8 text-center text-zinc-500" colSpan={6}>
-                      Каталог пуст. Добавь первый раскид слева и опубликуй его для бота.
-                    </td>
-                  </tr>
-                )}
+                  ))}
               </tbody>
             </table>
           </div>
+          ) : (
+            <div className="grid min-h-56 place-items-center rounded-lg border border-dashed border-white/10 px-6 text-center">
+              <div>
+                <div className="text-base font-bold text-zinc-200">Каталог пуст</div>
+                <div className="mt-2 max-w-md text-sm text-zinc-500">Добавь первый раскид слева, прикрепи медиа и опубликуй его для бота.</div>
+              </div>
+            </div>
+          )}
         </div>
       </section>
     </div>
   );
 }
 
-function Select({ label, value, onChange, children }: { label: string; value: string; onChange: (value: string) => void; children: ReactNode }) {
-  return (
-    <label className="block text-sm text-zinc-400">
-      {label}
-      <select className="field mt-2" value={value} onChange={(event) => onChange(event.target.value)}>
-        {children}
-      </select>
-    </label>
-  );
-}
-
-function TelegramPreview({ form, firstMedia, selectedMap }: { form: LineupForm; firstMedia?: MediaItem; selectedMap?: CsMap }) {
+function TelegramPreview({ form, mediaItems, firstMedia, selectedMap }: { form: LineupForm; mediaItems: MediaItem[]; firstMedia?: MediaItem; selectedMap?: CsMap }) {
   return (
     <div className="rounded-lg border border-white/10 bg-[#182033] p-3">
-      <div className="mb-3 flex items-center gap-2 text-sm font-bold text-zinc-200">
-        <Eye size={16} className="text-focus" />
-        Preview в стиле Telegram
+      <div className="mb-3 flex items-center justify-between gap-3 text-sm font-bold text-zinc-200">
+        <div className="flex items-center gap-2">
+          <Eye size={16} className="text-focus" />
+          Preview в стиле Telegram
+        </div>
+        <span className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-zinc-400">Медиа: {mediaItems.length || 0}</span>
       </div>
       <div className="overflow-hidden rounded-lg bg-[#30354f]">
         {firstMedia?.url ? (

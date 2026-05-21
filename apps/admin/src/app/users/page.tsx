@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Shield, UserCog } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { AuthGate } from "@/components/auth-gate";
+import { SelectField } from "@/components/select-field";
 import { api } from "@/lib/api";
 
 interface AdminUser {
@@ -14,6 +15,12 @@ interface AdminUser {
   role: "owner" | "admin" | "editor";
   createdAt: string;
 }
+
+const roleOptions = [
+  { value: "owner", label: "owner" },
+  { value: "admin", label: "admin" },
+  { value: "editor", label: "editor" }
+];
 
 export default function UsersPage() {
   return (
@@ -86,16 +93,13 @@ function UsersAdmin() {
                     </td>
                     <td className="px-3 py-4">{user.telegramId}</td>
                     <td className="px-3 py-4">
-                      <select
-                        className="field max-w-36"
+                      <SelectField
+                        className="max-w-36"
                         value={user.role}
+                        options={roleOptions}
                         disabled={update.isPending}
-                        onChange={(event) => update.mutate({ id: user.id, role: event.target.value as AdminUser["role"] })}
-                      >
-                        <option value="owner">owner</option>
-                        <option value="admin">admin</option>
-                        <option value="editor">editor</option>
-                      </select>
+                        onChange={(value) => update.mutate({ id: user.id, role: value as AdminUser["role"] })}
+                      />
                     </td>
                     <td className="px-3 py-4 text-zinc-500">{new Date(user.createdAt).toLocaleDateString("ru-RU")}</td>
                   </tr>

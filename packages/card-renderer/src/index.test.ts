@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { calculateWindowStats, type MatchStatRecord, type StatCardPayload } from "@fullfocus/shared";
-import { renderComparisonCard, renderComparisonCardSvg, renderStatCard, renderStatCardSvg } from "./index";
+import { renderComparisonCard, renderComparisonCardSvg, renderLevelBadge, renderStatCard, renderStatCardSvg } from "./index";
 
 const records: MatchStatRecord[] = Array.from({ length: 30 }, (_, index) => ({
   result: index % 3 === 0 ? "L" : "W",
@@ -44,18 +44,22 @@ describe("renderStatCard", () => {
     expect(png.byteLength).toBeGreaterThan(1000);
   });
 
-  it("renders avatar image and level badge in svg", () => {
+  it("renders avatar image and png level icon in svg", () => {
     const svg = renderStatCardSvg(payload);
     expect(svg).toContain("<image");
     expect(svg).toContain("LVL");
-    expect(svg).toContain(">10</text>");
+    expect(svg.match(/data:image\/png;base64/g)?.length).toBeGreaterThanOrEqual(4);
   });
 
-  it("renders comparison png and svg with both level badges", async () => {
+  it("keeps an svg fallback badge available", () => {
+    expect(renderLevelBadge(10, 24, 24)).toContain(">10</text>");
+  });
+
+  it("renders comparison png and svg with both png level icons", async () => {
     const comparison = { generatedAt: payload.generatedAt, botName: payload.botName, seasonLabel: payload.seasonLabel, window: 30, left: payload, right: payload };
     const png = await renderComparisonCard(comparison);
     const svg = renderComparisonCardSvg(comparison);
     expect(png.subarray(1, 4).toString()).toBe("PNG");
-    expect(svg.match(/>10<\/text>/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(svg.match(/data:image\/png;base64/g)?.length).toBeGreaterThanOrEqual(8);
   });
 });

@@ -1,9 +1,12 @@
+import { existsSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { Resvg } from "@resvg/resvg-js";
 import type { ComparisonSummary, MatchWindowStats, PlayerSummary, StatCardPayload } from "@fullfocus/shared";
 
 const WIDTH = 1080;
 const HEIGHT = 1215;
 const COMPARISON_HEIGHT = 600;
+const levelIconCache = new Map<string, string | null>();
 
 function esc(value: unknown): string {
   return String(value ?? "")
@@ -21,7 +24,7 @@ function fmt(value: number | null | undefined, digits = 1): string {
 }
 
 function trimText(value: string, max = 28): string {
-  return value.length > max ? `${value.slice(0, max - 1)}…` : value;
+  return value.length > max ? `${value.slice(0, max - 3)}...` : value;
 }
 
 function lineChart(values: number[], x: number, y: number, w: number, h: number, color: string): string {
@@ -55,12 +58,13 @@ function statBox(label: string, value: string, x: number, y: number, w = 150, h 
 }
 
 function faceitLevelBox(player: PlayerSummary, x: number, y: number, w = 160, h = 95): string {
+  const label = player.skillLevelLabel ?? String(player.skillLevel);
   return `
     <g>
       <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="18" fill="url(#panel)" stroke="rgba(255,255,255,.1)"/>
       <text x="${x + 18}" y="${y + 34}" fill="#9a9aa5" font-size="17" letter-spacing="3">FACEIT</text>
-      <text x="${x + 18}" y="${y + 72}" fill="#f7f7fa" font-size="30" font-weight="900">LVL</text>
-      ${renderLevelBadge(player.skillLevel, x + w - 34, y + 48, 30)}
+      <text x="${x + 18}" y="${y + 72}" fill="#f7f7fa" font-size="24" font-weight="900">LVL ${esc(label)}</text>
+      ${renderLevelIcon(player, x + w - 44, y + 48, 38)}
     </g>
   `;
 }
@@ -75,6 +79,55 @@ export function renderLevelBadge(level: number, cx: number, cy: number, radius =
       <text x="${cx}" y="${cy + radius * 0.28}" fill="#ffffff" font-size="${Math.round(radius * 0.72)}" font-weight="900" text-anchor="middle">${clamped}</text>
     </g>
   `;
+}
+
+function renderLevelIcon(player: PlayerSummary, x: number, y: number, size: number): string {
+  const dataUri = getLevelIconDataUri(player);
+  if (!dataUri) {
+    return renderLevelBadge(player.skillLevel, x + size / 2, y + size / 2, size / 2);
+  }
+
+  return `<image href="${esc(dataUri)}" xlink:href="${esc(dataUri)}" x="${x}" y="${y}" width="${size}" height="${size}" preserveAspectRatio="xMidYMid meet"/>`;
+}
+
+function getLevelIconDataUri(player: PlayerSummary): string | null {
+  const iconName = getLevelIconName(player);
+  if (levelIconCache.has(iconName)) {
+    return levelIconCache.get(iconName) ?? null;
+  }
+
+  for (const directory of getAssetDirectories()) {
+    const filePath = join(directory, iconName);
+    if (!existsSync(filePath)) {
+      continue;
+    }
+
+    const dataUri = `data:image/png;base64,${readFileSync(filePath).toString("base64")}`;
+    levelIconCache.set(iconName, dataUri);
+    return dataUri;
+  }
+
+  levelIconCache.set(iconName, null);
+  return null;
+}
+
+function getLevelIconName(player: PlayerSummary): string {
+  const label = player.skillLevelLabel?.toLowerCase().trim();
+  if (label === "challenger" || player.skillLevel > 10) {
+    return "challenger.png";
+  }
+
+  const level = Math.max(1, Math.min(10, Math.round(player.skillLevel || 1)));
+  return `${level}.png`;
+}
+
+function getAssetDirectories(): string[] {
+  return [
+    process.env.FULLFOCUS_ASSETS_DIR,
+    resolve(process.cwd(), "public"),
+    resolve(process.cwd(), "..", "..", "public"),
+    resolve(__dirname, "..", "..", "..", "public")
+  ].filter((directory, index, directories): directory is string => Boolean(directory) && directories.indexOf(directory) === index);
 }
 
 function renderAvatar(player: PlayerSummary, x: number, y: number, size: number, clipId: string): string {
@@ -233,7 +286,7 @@ function compactPlayerPanel(payload: StatCardPayload, x: number, clipId: string)
       ${renderAvatar(payload.player, x + 32, 250, 74, clipId)}
       <text x="${x + 125}" y="285" fill="#f7f7fa" font-size="32" font-weight="900">${esc(trimText(payload.player.nickname, 15))}</text>
       <text x="${x + 125}" y="318" fill="#a1a1aa" font-size="17">${esc((payload.player.country ?? "WORLD").toUpperCase())} · ELO ${payload.player.elo} · LVL ${payload.player.skillLevel}</text>
-      ${renderLevelBadge(payload.player.skillLevel, x + 445, 287, 34)}
+      ${renderLevelIcon(payload.player, x + 418, 260, 54)}
       ${statBox("Рейтинг 3.0", fmt(stats.kd, 2), x + 32, 360, 215, 64, 30)}
       ${statBox("K/D", fmt(stats.kd, 2), x + 260, 360, 200, 64, 30)}
       ${statBox("ADR", fmt(stats.adr), x + 32, 438, 215, 64, 30)}
