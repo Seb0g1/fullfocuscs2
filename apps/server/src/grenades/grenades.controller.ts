@@ -125,7 +125,8 @@ export class GrenadesController {
       videoScale: fields.videoScale,
       videoOffsetX: fields.videoOffsetX,
       videoOffsetY: fields.videoOffsetY,
-      introSeconds: fields.introSeconds
+      introSeconds: fields.introSeconds,
+      hideWatermark: fields.hideWatermark
     });
   }
 }

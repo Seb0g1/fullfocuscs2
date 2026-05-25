@@ -5,6 +5,11 @@ import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { mediaUrl } from "@/lib/api";
 
+const MIN_VIDEO_SCALE = 0.65;
+const MAX_VIDEO_SCALE = 4.5;
+const MIN_VIDEO_OFFSET = -1200;
+const MAX_VIDEO_OFFSET = 1200;
+
 export interface GrenadeVideoEditorState {
   flightSeconds: string;
   aimFrameSeconds: string;
@@ -12,6 +17,7 @@ export interface GrenadeVideoEditorState {
   videoOffsetX: string;
   videoOffsetY: string;
   introSeconds: string;
+  hideWatermark: string;
   notice: string;
   processedUrl?: string | null;
   thumbnailUrl?: string | null;
@@ -27,6 +33,7 @@ export interface GrenadeVideoBuildPayload {
   videoOffsetX: string;
   videoOffsetY: string;
   introSeconds: string;
+  hideWatermark: string;
 }
 
 interface GrenadeVideoEditorProps {
@@ -44,6 +51,7 @@ export function GrenadeVideoEditor({ title, value, isProcessing, onChange, onBui
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
+  const [videoSize, setVideoSize] = useState<{ width: number; height: number } | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
 
@@ -57,13 +65,17 @@ export function GrenadeVideoEditor({ title, value, isProcessing, onChange, onBui
     setObjectUrl(nextUrl);
     setDuration(0);
     setCurrentTime(0);
+    setVideoSize(null);
     setIsPlaying(false);
     return () => URL.revokeObjectURL(nextUrl);
   }, [file]);
 
-  const previewScale = clampNumber(value.videoScale, 1, 0.65, 2.5);
-  const previewOffsetX = clampNumber(value.videoOffsetX, 0, -420, 420);
-  const previewOffsetY = clampNumber(value.videoOffsetY, 0, -420, 420);
+  const previewScale = clampNumber(value.videoScale, 1, MIN_VIDEO_SCALE, MAX_VIDEO_SCALE);
+  const previewOffsetX = clampNumber(value.videoOffsetX, 0, MIN_VIDEO_OFFSET, MAX_VIDEO_OFFSET);
+  const previewOffsetY = clampNumber(value.videoOffsetY, 0, MIN_VIDEO_OFFSET, MAX_VIDEO_OFFSET);
+  const previewOffsetCssX = previewOffsetX / 2.57;
+  const previewOffsetCssY = previewOffsetY / 2.57;
+  const hideWatermark = value.hideWatermark !== "false";
   const timelineMax = Math.max(duration, 0);
   const timelineLabel = useMemo(() => `${formatTime(currentTime)} / ${duration ? formatTime(duration) : "00:00"}`, [currentTime, duration]);
 
@@ -119,8 +131,21 @@ export function GrenadeVideoEditor({ title, value, isProcessing, onChange, onBui
       videoScale: "1",
       videoOffsetX: "0",
       videoOffsetY: "0",
-      introSeconds: "1.2"
+      introSeconds: "1.2",
+      hideWatermark: "true"
     });
+  }
+
+  function applyPreset(preset: "width" | "fill" | "aim") {
+    if (preset === "width") {
+      updateDraft({ videoScale: "1", videoOffsetX: "0", videoOffsetY: "0" });
+      return;
+    }
+    if (preset === "fill") {
+      updateDraft({ videoScale: fillScreenScale(videoSize), videoOffsetX: "0", videoOffsetY: "0" });
+      return;
+    }
+    updateDraft({ videoScale: "2", videoOffsetX: "0", videoOffsetY: "0" });
   }
 
   async function buildVideo() {
@@ -139,7 +164,8 @@ export function GrenadeVideoEditor({ title, value, isProcessing, onChange, onBui
         videoScale: value.videoScale,
         videoOffsetX: value.videoOffsetX,
         videoOffsetY: value.videoOffsetY,
-        introSeconds: value.introSeconds
+        introSeconds: value.introSeconds,
+        hideWatermark: value.hideWatermark
       });
     } catch {
       // The parent mutation already turns API errors into the page-level alert.
@@ -175,8 +201,8 @@ export function GrenadeVideoEditor({ title, value, isProcessing, onChange, onBui
         </button>
       </div>
 
-      <div className="grid gap-5 min-[1500px]:grid-cols-[minmax(300px,390px)_1fr]">
-        <div className="mx-auto w-full max-w-[390px]">
+      <div className="grid gap-6 xl:grid-cols-[minmax(340px,420px)_minmax(420px,1fr)]">
+        <div className="mx-auto w-full max-w-[420px]">
           <div className="relative aspect-[9/16] overflow-hidden rounded-[26px] border border-focus/35 bg-black shadow-2xl shadow-black/40">
             <img src="/back-fro-granades.png" alt="" className="absolute inset-0 h-full w-full object-cover" />
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_42%,rgba(255,106,0,0.13),transparent_34%),linear-gradient(180deg,rgba(0,0,0,0.18),rgba(0,0,0,0.36))]" />
@@ -190,12 +216,16 @@ export function GrenadeVideoEditor({ title, value, isProcessing, onChange, onBui
                 preload="metadata"
                 className="absolute left-1/2 top-1/2 z-10 w-full max-w-none"
                 style={{
-                  transform: `translate(-50%, -50%) translate(${previewOffsetX}px, ${previewOffsetY}px) scale(${previewScale})`,
+                  transform: `translate(-50%, -50%) translate(${previewOffsetCssX}px, ${previewOffsetCssY}px) scale(${previewScale})`,
                   transformOrigin: "center"
                 }}
                 onLoadedMetadata={(event) => {
                   const nextDuration = event.currentTarget.duration;
                   setDuration(Number.isFinite(nextDuration) ? nextDuration : 0);
+                  setVideoSize({
+                    width: event.currentTarget.videoWidth || 0,
+                    height: event.currentTarget.videoHeight || 0
+                  });
                 }}
                 onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
                 onPlay={() => setIsPlaying(true)}
@@ -215,6 +245,16 @@ export function GrenadeVideoEditor({ title, value, isProcessing, onChange, onBui
             <div className="absolute left-4 right-4 top-4 z-20 flex items-center justify-between gap-2 text-[11px] font-black uppercase tracking-[0.18em] text-white/80">
               <span className="rounded-lg border border-white/10 bg-black/45 px-2 py-1 backdrop-blur">Preview 9:16</span>
               <span className="rounded-lg border border-focus/30 bg-focus/15 px-2 py-1 text-focus">1080x1920</span>
+            </div>
+            {hideWatermark ? (
+              <div className="absolute right-5 top-[52%] z-20 rounded-lg border border-focus/55 bg-black/80 px-3 py-2 text-right text-[10px] font-black uppercase tracking-[0.18em] text-focus shadow-lg shadow-black/45">
+                FullFocus
+                <div className="mt-0.5 text-[8px] tracking-[0.22em] text-white/55">Clean overlay</div>
+              </div>
+            ) : null}
+            <div className="pointer-events-none absolute left-1/2 top-1/2 z-20 h-12 w-12 -translate-x-1/2 -translate-y-1/2 rounded-full border border-focus/45 shadow-[0_0_18px_rgba(255,106,0,0.35)]">
+              <span className="absolute left-1/2 top-2 h-8 w-px -translate-x-1/2 bg-focus/70" />
+              <span className="absolute left-2 top-1/2 h-px w-8 -translate-y-1/2 bg-focus/70" />
             </div>
             <div className="absolute bottom-4 left-4 right-4 z-20 rounded-lg border border-white/10 bg-black/55 p-3 backdrop-blur">
               <div className="flex items-center justify-between gap-3 text-xs text-zinc-300">
@@ -236,18 +276,31 @@ export function GrenadeVideoEditor({ title, value, isProcessing, onChange, onBui
               <div className="px-3 py-2 text-xs text-emerald-100">Poster готов. Ролик добавлен в файлы раскида.</div>
             </div>
           ) : null}
+          <div className="mt-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs leading-5 text-zinc-400">
+            Scale {previewScale.toFixed(2)} · X {previewOffsetX} · Y {previewOffsetY}
+            <br />
+            Чёрные поля убираются режимом «Заполнить экран». Для точного прицела выбери кадр на таймлайне и нажми «Поставить стоп-кадр».
+          </div>
         </div>
 
         <div className="space-y-4">
           <div className="rounded-lg border border-white/10 bg-black/20 p-3">
-            <div className="mb-3 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="mb-3">
               <div>
                 <div className="text-sm font-black text-zinc-100">{file?.name ?? "Видео ещё не выбрано"}</div>
                 <div className="text-xs text-zinc-500">{value.sourceInfo || "Сначала выбери видео, затем выставь тайминги и кадр прицеливания."}</div>
               </div>
-              <button className="btn btn-ghost h-10" type="button" disabled={!objectUrl} onClick={togglePlayback}>
-                {isPlaying ? <Pause size={16} /> : <Play size={16} />}
-                {isPlaying ? "Пауза" : "Play"}
+            </div>
+
+            <div className="mb-4 grid gap-2 sm:grid-cols-3">
+              <button className="btn btn-ghost h-10" type="button" onClick={() => applyPreset("width")}>
+                По ширине
+              </button>
+              <button className="btn btn-ghost h-10" type="button" onClick={() => applyPreset("fill")}>
+                Заполнить экран
+              </button>
+              <button className="btn btn-ghost h-10" type="button" onClick={() => applyPreset("aim")}>
+                Прицел крупно
               </button>
             </div>
 
@@ -265,7 +318,11 @@ export function GrenadeVideoEditor({ title, value, isProcessing, onChange, onBui
               disabled={!objectUrl || !timelineMax}
               onChange={(event) => seekTo(event.target.value)}
             />
-            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            <div className="mt-3 grid gap-2 sm:grid-cols-3">
+              <button className="btn btn-ghost h-10" type="button" disabled={!objectUrl} onClick={togglePlayback}>
+                {isPlaying ? <Pause size={16} /> : <Play size={16} />}
+                {isPlaying ? "Пауза" : "Play"}
+              </button>
               <button className="btn btn-ghost h-10" type="button" disabled={!objectUrl} onClick={setAimFrame}>
                 <Scissors size={16} />
                 Поставить стоп-кадр
@@ -277,13 +334,25 @@ export function GrenadeVideoEditor({ title, value, isProcessing, onChange, onBui
             </div>
           </div>
 
-          <div className="grid gap-3 lg:grid-cols-2">
+          <div className="space-y-3">
             <NumberControl label="Время полёта, сек" value={value.flightSeconds} min={0.1} max={20} step={0.1} icon={<Timer size={14} />} onChange={(next) => updateDraft({ flightSeconds: next })} />
             <NumberControl label="Стоп-кадр, сек" value={value.aimFrameSeconds} min={0} max={Math.max(duration, 1)} step={0.05} icon={<Scissors size={14} />} onChange={(next) => updateDraft({ aimFrameSeconds: next })} />
-            <NumberControl label="Zoom видео" value={value.videoScale} min={0.65} max={2.5} step={0.05} icon={<SlidersHorizontal size={14} />} onChange={(next) => updateDraft({ videoScale: next })} />
+            <NumberControl label="Zoom видео" value={value.videoScale} min={MIN_VIDEO_SCALE} max={MAX_VIDEO_SCALE} step={0.05} icon={<SlidersHorizontal size={14} />} onChange={(next) => updateDraft({ videoScale: next })} />
             <NumberControl label="Стоп-кадр длится, сек" value={value.introSeconds} min={0.4} max={4} step={0.1} icon={<Timer size={14} />} onChange={(next) => updateDraft({ introSeconds: next })} />
-            <NumberControl label="Сдвиг X" value={value.videoOffsetX} min={-420} max={420} step={5} onChange={(next) => updateDraft({ videoOffsetX: next })} />
-            <NumberControl label="Сдвиг Y" value={value.videoOffsetY} min={-420} max={420} step={5} onChange={(next) => updateDraft({ videoOffsetY: next })} />
+            <NumberControl label="Сдвиг X" value={value.videoOffsetX} min={MIN_VIDEO_OFFSET} max={MAX_VIDEO_OFFSET} step={10} onChange={(next) => updateDraft({ videoOffsetX: next })} />
+            <NumberControl label="Сдвиг Y" value={value.videoOffsetY} min={MIN_VIDEO_OFFSET} max={MAX_VIDEO_OFFSET} step={10} onChange={(next) => updateDraft({ videoOffsetY: next })} />
+            <label className="flex items-center justify-between gap-4 rounded-lg border border-white/10 bg-black/20 px-4 py-3">
+              <span>
+                <span className="block text-sm font-black text-zinc-100">Скрыть watermark справа</span>
+                <span className="block text-xs leading-5 text-zinc-500">В итоговом MP4 появится аккуратная FullFocus-плашка поверх чужого логотипа.</span>
+              </span>
+              <input
+                className="h-5 w-5 accent-[#ff6a00]"
+                type="checkbox"
+                checked={hideWatermark}
+                onChange={(event) => updateDraft({ hideWatermark: event.target.checked ? "true" : "false" })}
+              />
+            </label>
           </div>
 
           <button className="btn btn-primary h-12 w-full text-base" type="button" disabled={!file || isProcessing} onClick={buildVideo}>
@@ -324,14 +393,14 @@ function NumberControl({
   const fallback = min <= 0 && max >= 0 ? 0 : min;
   const normalized = clampNumber(value, fallback, min, max);
   return (
-    <label className="rounded-lg border border-white/10 bg-black/20 p-3">
-      <span className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-zinc-500">
+    <label className="grid gap-3 rounded-lg border border-white/10 bg-black/20 p-3 sm:grid-cols-[170px_minmax(120px,1fr)_96px] sm:items-center">
+      <span className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.08em] text-zinc-500">
         {icon}
         {label}
       </span>
       <input className="w-full accent-[#ff6a00]" type="range" min={min} max={max} step={step} value={normalized} onChange={(event) => onChange(event.target.value)} />
       <input
-        className="field mt-2 h-10"
+        className="field h-10"
         aria-label={label}
         inputMode="decimal"
         value={value}
@@ -357,6 +426,17 @@ function clampNumber(value: string, fallback: number, min: number, max: number):
 
 function formatDecimal(value: number): string {
   return value.toFixed(2).replace(/\.?0+$/, "") || "0";
+}
+
+function fillScreenScale(videoSize: { width: number; height: number } | null): string {
+  if (!videoSize?.width || !videoSize.height) {
+    return "1";
+  }
+
+  const stageAspect = 9 / 16;
+  const videoAspect = videoSize.width / videoSize.height;
+  const scale = Math.max(1, videoAspect / stageAspect);
+  return formatDecimal(Math.min(MAX_VIDEO_SCALE, Math.max(MIN_VIDEO_SCALE, scale)));
 }
 
 function formatTime(value: number): string {

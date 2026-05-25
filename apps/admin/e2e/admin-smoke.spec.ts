@@ -34,11 +34,15 @@ test("grenade admin uses dark custom controls and empty state", async ({ page })
     buffer: Buffer.from("mock-video")
   });
   await expect(page.getByText("Видео-редактор FullFocus")).toBeVisible();
+  await page.getByRole("button", { name: "Прицел крупно" }).click();
+  await expect(page.getByRole("textbox", { name: "Zoom видео" })).toHaveValue("2");
+  await page.getByRole("button", { name: "По ширине" }).click();
+  await expect(page.getByRole("textbox", { name: "Zoom видео" })).toHaveValue("1");
   await page.getByRole("textbox", { name: "Время полёта, сек" }).fill("2.4");
   await page.getByRole("textbox", { name: "Стоп-кадр, сек" }).fill("1.2");
-  await page.getByRole("textbox", { name: "Zoom видео" }).fill("1.25");
-  await page.getByRole("textbox", { name: "Сдвиг X" }).fill("40");
-  await page.getByRole("textbox", { name: "Сдвиг Y" }).fill("-80");
+  await page.getByRole("textbox", { name: "Zoom видео" }).fill("4.5");
+  await page.getByRole("textbox", { name: "Сдвиг X" }).fill("1200");
+  await page.getByRole("textbox", { name: "Сдвиг Y" }).fill("-1200");
   await page.getByRole("textbox", { name: "Стоп-кадр длится, сек" }).fill("1.6");
   await page.getByRole("button", { name: "Собрать MP4 для Telegram" }).click();
   await expect(page.getByText("Видео собрано")).toBeVisible();
@@ -135,9 +139,9 @@ function startMockApi(): Promise<Server> {
           caption: "lineup.webm",
           flightSeconds: 2.4,
           aimFrameSeconds: 1.2,
-          videoScale: 1.25,
-          videoOffsetX: 40,
-          videoOffsetY: -80,
+          videoScale: 4.5,
+          videoOffsetX: 1200,
+          videoOffsetY: -1200,
           introSeconds: 1.6,
           adapted: true
         },
@@ -145,9 +149,9 @@ function startMockApi(): Promise<Server> {
         editor: {
           flightSeconds: 2.4,
           aimFrameSeconds: 1.2,
-          videoScale: 1.25,
-          videoOffsetX: 40,
-          videoOffsetY: -80,
+          videoScale: 4.5,
+          videoOffsetX: 1200,
+          videoOffsetY: -1200,
           introSeconds: 1.6
         }
       });

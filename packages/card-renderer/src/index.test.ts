@@ -83,7 +83,25 @@ describe("renderStatCard", () => {
     expect(svg).toContain(">K / A / D</text>");
     expect(svg).toContain(">613 / 186 / 577</text>");
     expect(svg).toContain(">Недостаточно данных</text>");
+    expect(svg).toContain(">РЕЙТ. 3.0</text>");
+    expect(svg).not.toContain(">РЕЙТИНГ 3.0</text>");
     expect(svg).not.toContain("K / A / D 613");
+  });
+
+  it("trims long teammate names and keeps four rows inside the teammate card", () => {
+    const svg = renderStatCardSvg({
+      ...payload,
+      topTeammates: [
+        { nickname: "VeryVeryLongTeammateNicknameOne", matches: 7, wins: 4, losses: 3 },
+        { nickname: "AnotherHugeNicknameForLayout", matches: 6, wins: 3, losses: 3 },
+        { nickname: "ThirdNicknameThatWouldOverflow", matches: 5, wins: 2, losses: 3 },
+        { nickname: "FourthNicknameStillVisible", matches: 4, wins: 2, losses: 2 }
+      ]
+    });
+
+    expect(svg).toContain("VeryVeryLong...");
+    expect(svg).toContain('y="944"');
+    expect(svg).not.toContain('y="955"');
   });
 
   it("keeps an svg fallback badge available", () => {

@@ -594,18 +594,19 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       ? lineup.mediaItems
       : [{ type: lineup.mediaType, url: lineup.mediaUrl, thumbnailUrl: lineup.thumbnailUrl, caption: lineup.title, flightSeconds: null, aimFrameSeconds: null, adapted: false }];
     const flightLine = buildFlightLine(mediaItems, lineup.description);
+    const typeToken = grenadeEmojiToken(lineup.grenadeType);
     const rawCaption = [
-      `${lineup.mapEmoji ? `${lineup.mapEmoji} ` : ""}${lineup.mapName} · ${grenadeTypeLabel(lineup.grenadeType)} · ${sideLabel(lineup.side)}`,
-      lineup.title,
+      `{{emoji:focus}} FullFocus | ${lineup.mapEmoji ? `${lineup.mapEmoji} ` : ""}${lineup.mapName}`,
+      `${typeToken} ${grenadeTypeLabel(lineup.grenadeType)} · ${sideLabel(lineup.side)} · ${lineup.title}`,
       "",
-      `Откуда: ${lineup.from}`,
-      `Куда: ${lineup.to}`,
-      `Часть карты: ${lineup.area}`,
-      `Сложность: ${difficultyLabel(lineup.difficulty)}`,
-      flightLine,
+      `📍 Откуда: ${lineup.from}`,
+      `🎯 Куда: ${lineup.to}`,
+      `🧭 Часть карты: ${lineup.area}`,
+      `⚙️ Сложность: ${difficultyLabel(lineup.difficulty)}`,
+      flightLine ? `⏱ ${flightLine}` : null,
       "",
-      lineup.description
-    ].filter((line) => line !== null).join("\n");
+      lineup.description.trim()
+    ].filter((line) => line !== null && line !== "").join("\n");
     const caption = await this.parseCaption(rawCaption);
     const media = mediaItems.filter((item) => item.url).slice(0, 10);
 
@@ -941,6 +942,13 @@ function grenadeTypeEmoji(type: string): string {
   if (type === "molotov") return "🔥";
   if (type === "he") return "💥";
   return "💨";
+}
+
+function grenadeEmojiToken(type: string): string {
+  if (type === "flash") return "{{emoji:flash}}";
+  if (type === "molotov") return "{{emoji:molotov}}";
+  if (type === "he") return "{{emoji:he}}";
+  return "{{emoji:smoke}}";
 }
 
 function difficultyLabel(value: string): string {

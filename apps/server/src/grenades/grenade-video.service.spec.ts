@@ -52,7 +52,8 @@ describe("GrenadeVideoService", () => {
       videoScale: "1.25",
       videoOffsetX: "40",
       videoOffsetY: "-80",
-      introSeconds: "1.6"
+      introSeconds: "1.6",
+      hideWatermark: "true"
     });
 
     expect(result.mediaItem).toMatchObject({
@@ -75,12 +76,31 @@ describe("GrenadeVideoService", () => {
       videoScale: 1.25,
       videoOffsetX: 40,
       videoOffsetY: -80,
-      introSeconds: 1.6
+      introSeconds: 1.6,
+      hideWatermark: true
     });
     expect(service.commands.map((item) => item.command)).toEqual(["ffprobe", "ffmpeg", "ffmpeg", "ffmpeg"]);
     expect(service.commands[2]?.args.join(" ")).toContain("scale=1350:-2");
     expect(service.commands[2]?.args.join(" ")).toContain("overlay=(W-w)/2+40:(H-h)/2-80");
+    expect(service.commands[2]?.args.join(" ")).toContain("drawbox=x=w-314:y=h-920");
     expect(service.commands[3]?.args.join(" ")).toContain("trim=duration=1.6");
+  });
+
+  it("accepts zoomed crop settings up to 4.5 and can skip watermark cover", async () => {
+    await service.process({
+      file: videoFile("video/mp4", Buffer.from("video")),
+      flightSeconds: 2,
+      aimFrameSeconds: 1,
+      videoScale: "4.5",
+      videoOffsetX: "1200",
+      videoOffsetY: "-1200",
+      hideWatermark: "false"
+    });
+
+    const thumbnailArgs = service.commands[2]?.args.join(" ") ?? "";
+    expect(thumbnailArgs).toContain("scale=4860:-2");
+    expect(thumbnailArgs).toContain("overlay=(W-w)/2+1200:(H-h)/2-1200");
+    expect(thumbnailArgs).not.toContain("drawbox=x=w-314:y=h-920");
   });
 
   it("rejects editor settings outside safe ranges", async () => {
@@ -89,7 +109,16 @@ describe("GrenadeVideoService", () => {
         file: videoFile("video/mp4", Buffer.from("video")),
         flightSeconds: 2,
         aimFrameSeconds: 1,
-        videoScale: 3
+        videoScale: 4.6
+      })
+    ).rejects.toMatchObject({ status: 400 });
+
+    await expect(
+      service.process({
+        file: videoFile("video/mp4", Buffer.from("video")),
+        flightSeconds: 2,
+        aimFrameSeconds: 1,
+        videoOffsetX: 1201
       })
     ).rejects.toMatchObject({ status: 400 });
 

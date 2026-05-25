@@ -186,6 +186,7 @@ function Grenades() {
     videoOffsetX: "0",
     videoOffsetY: "0",
     introSeconds: "1.2",
+    hideWatermark: "true",
     notice: "",
     processedUrl: null,
     thumbnailUrl: null,
@@ -265,6 +266,7 @@ function Grenades() {
       body.append("videoOffsetX", payload.videoOffsetX);
       body.append("videoOffsetY", payload.videoOffsetY);
       body.append("introSeconds", payload.introSeconds);
+      body.append("hideWatermark", payload.hideWatermark);
       body.append("title", payload.title || payload.file.name);
       return api<ProcessedVideoResponse>("/admin/media/grenade-video", { method: "POST", body });
     },
@@ -410,6 +412,14 @@ function Grenades() {
         </div>
       ) : null}
 
+      <GrenadeVideoEditor
+        title={form.title}
+        value={videoAdapter}
+        isProcessing={processVideo.isPending}
+        onChange={(patch) => setVideoAdapter((current) => ({ ...current, ...patch }))}
+        onBuild={buildAdaptedVideo}
+      />
+
       <section className="grid gap-6 xl:grid-cols-[470px_1fr]">
         <form onSubmit={submit} className="panel space-y-4 p-5">
           <div className="flex items-center justify-between gap-3">
@@ -517,13 +527,6 @@ function Grenades() {
 
           <div className="space-y-3 border-t border-white/10 pt-4">
             <div className="text-xs font-black uppercase tracking-[0.28em] text-focus">Медиа</div>
-            <GrenadeVideoEditor
-              title={form.title}
-              value={videoAdapter}
-              isProcessing={processVideo.isPending}
-              onChange={(patch) => setVideoAdapter((current) => ({ ...current, ...patch }))}
-              onBuild={buildAdaptedVideo}
-            />
             <div className="flex items-center justify-between gap-3">
               <div>
                 <div className="text-sm font-bold text-zinc-200">Файлы раскида</div>
@@ -807,7 +810,7 @@ function appendFlightTime(description: string, flightSeconds: number | null | un
   if (!flightSeconds || /время\s+пол[её]та/i.test(description)) {
     return description;
   }
-  const line = `Время полёта: ${formatSeconds(flightSeconds)} сек.`;
+  const line = `⏱ Время полёта: ${formatSeconds(flightSeconds)} сек.`;
   return [description.trim(), line].filter(Boolean).join("\n");
 }
 
