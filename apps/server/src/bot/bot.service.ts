@@ -2,6 +2,8 @@ import { Injectable, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { renderComparisonCard, renderStatCard } from "@fullfocus/card-renderer";
 import { buildGrenadeCallback, GRENADE_TYPES, splitCompareInput } from "@fullfocus/shared";
+import { existsSync } from "node:fs";
+import { basename, join } from "node:path";
 import { Markup, Telegraf, type Context } from "telegraf";
 import { GrenadesService } from "../grenades/grenades.service";
 import { PrismaService } from "../prisma.service";
@@ -314,11 +316,17 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
+    if (lineups.length === 1) {
+      await ctx.sendChatAction("upload_photo").catch(() => undefined);
+      await this.sendLineup(ctx, lineups[0].id);
+      return;
+    }
+
     await ctx.reply(
       "Выбери позицию:",
       Markup.inlineKeyboard([
         ...chunkButtons(
-          lineups.slice(0, 24).map((lineup) => Markup.button.callback(lineup.to || lineup.title, buildGrenadeCallback({ kind: "position", lineupId: lineup.id }))),
+          lineups.slice(0, 24).map((lineup) => Markup.button.callback(lineupButtonLabel(lineup), buildGrenadeCallback({ kind: "position", lineupId: lineup.id }))),
           2
         ),
         [Markup.button.callback("Назад", buildGrenadeCallback({ kind: "area", mapSlug, side: normalizeSide(side), areaSlug }))],
@@ -357,12 +365,16 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
 
     if (media.length === 1) {
       const item = media[0];
-      if (item.type === "video") {
-        await ctx.replyWithVideo(this.publicUrl(item.url), { caption, ...this.lineupKeyboard(lineup) });
-      } else if (item.type === "image") {
-        await ctx.replyWithPhoto(this.publicUrl(item.url), { caption, ...this.lineupKeyboard(lineup) });
-      } else {
-        await ctx.reply(`${caption}\n\n${this.publicUrl(item.url)}`, this.lineupKeyboard(lineup));
+      try {
+        if (item.type === "video") {
+          await ctx.replyWithVideo(this.telegramMedia(item.url), { caption, ...this.lineupKeyboard(lineup) });
+        } else if (item.type === "image") {
+          await ctx.replyWithPhoto(this.telegramMedia(item.url), { caption, ...this.lineupKeyboard(lineup) });
+        } else {
+          await ctx.reply(`${caption}\n\n${this.publicUrl(item.url)}`, this.lineupKeyboard(lineup));
+        }
+      } catch {
+        await this.replyLineupFallback(ctx, caption, [item.url], lineup);
       }
       return;
     }
@@ -371,13 +383,17 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       .filter((item) => item.type === "image" || item.type === "video")
       .map((item, index) => ({
         type: item.type === "video" ? "video" : "photo",
-        media: this.publicUrl(item.url),
+        media: this.telegramMedia(item.url),
         caption: index === 0 ? caption : item.caption ?? undefined
       }));
 
     if (album.length) {
-      await ctx.replyWithMediaGroup(album as never);
-      await ctx.reply("Готово. Можешь выбрать ещё одну позицию или вернуться в меню.", this.lineupKeyboard(lineup));
+      try {
+        await ctx.replyWithMediaGroup(album as never);
+        await ctx.reply("Готово. Можешь выбрать ещё одну позицию или вернуться в меню.", this.lineupKeyboard(lineup));
+      } catch {
+        await this.replyLineupFallback(ctx, caption, media.map((item) => item.url), lineup);
+      }
       return;
     }
 
@@ -450,6 +466,50 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     return base && url.startsWith("/") ? `${base}${url}` : url;
   }
 
+  private telegramMedia(url: string): string | { source: string } {
+    const localFile = this.localMediaPath(url);
+    return localFile ?? this.publicUrl(url);
+  }
+
+  private localMediaPath(url: string): { source: string } | null {
+    const filename = this.mediaFilename(url);
+    if (!filename) {
+      return null;
+    }
+
+    const mediaRoot = this.config.get<string>("MEDIA_ROOT") ?? "./media";
+    const filePath = join(mediaRoot, filename);
+    return existsSync(filePath) ? { source: filePath } : null;
+  }
+
+  private mediaFilename(url: string): string | null {
+    let pathname = url;
+    if (url.startsWith("http")) {
+      try {
+        const parsed = new URL(url);
+        const publicBase = this.config.get<string>("ADMIN_PUBLIC_URL");
+        if (publicBase && parsed.origin !== new URL(publicBase).origin) {
+          return null;
+        }
+        pathname = parsed.pathname;
+      } catch {
+        return null;
+      }
+    }
+
+    if (!pathname.startsWith("/media/")) {
+      return null;
+    }
+
+    const filename = basename(decodeURIComponent(pathname));
+    return /^[a-z0-9-]+\.(png|jpe?g|webp|gif|mp4|webm|mov)$/i.test(filename) ? filename : null;
+  }
+
+  private async replyLineupFallback(ctx: Context, caption: string, urls: string[], lineup: { mapSlug: string; side: string; areaSlug: string; grenadeType: string }) {
+    const links = urls.map((url) => this.publicUrl(url)).join("\n");
+    await ctx.reply(`${caption}\n\nМедиа не удалось отправить файлом, открой ссылку:\n${links}`, this.lineupKeyboard(lineup));
+  }
+
   private async getSettingString(key: string, fallback = ""): Promise<string> {
     const setting = await this.prisma.botSetting.findUnique({ where: { key } }).catch(() => null);
     const value = setting?.value;
@@ -482,6 +542,13 @@ function chunkButtons<T>(buttons: T[], size: number): T[][] {
 
 function normalizeSide(side: string): "t" | "ct" {
   return side.toLowerCase() === "ct" ? "ct" : "t";
+}
+
+function lineupButtonLabel(lineup: { from: string; to: string; title: string }): string {
+  if (lineup.from && lineup.to && lineup.from !== lineup.to) {
+    return `${lineup.from} → ${lineup.to}`.slice(0, 48);
+  }
+  return (lineup.to || lineup.title).slice(0, 48);
 }
 
 function sideLabel(side: string): string {

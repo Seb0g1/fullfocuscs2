@@ -51,6 +51,27 @@ describe("renderStatCard", () => {
     expect(svg.match(/data:image\/png;base64/g)?.length).toBeGreaterThanOrEqual(4);
   });
 
+  it("keeps dense right-side text inside dedicated rows", () => {
+    const svg = renderStatCardSvg({
+      ...payload,
+      currentWindow: {
+        ...payload.currentWindow,
+        kills: 613,
+        assists: 186,
+        deaths: 577,
+        wins: 11,
+        losses: 19
+      },
+      topTeammates: []
+    });
+
+    expect(svg).toContain(">ПОСЛЕДНИЕ МАТЧИ</text>");
+    expect(svg).toContain(">K / A / D</text>");
+    expect(svg).toContain(">613 / 186 / 577</text>");
+    expect(svg).toContain('x="808" y="898"');
+    expect(svg).not.toContain("K / A / D 613");
+  });
+
   it("keeps an svg fallback badge available", () => {
     expect(renderLevelBadge(10, 24, 24)).toContain(">10</text>");
   });

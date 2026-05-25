@@ -27,6 +27,14 @@ function trimText(value: string, max = 28): string {
   return value.length > max ? `${value.slice(0, max - 3)}...` : value;
 }
 
+function fitFontSize(value: string, baseSize: number, maxWidth: number, minSize = 18): number {
+  const estimated = value.length * baseSize * 0.58;
+  if (estimated <= maxWidth) {
+    return baseSize;
+  }
+  return Math.max(minSize, Math.floor(maxWidth / Math.max(value.length * 0.58, 1)));
+}
+
 function lineChart(values: number[], x: number, y: number, w: number, h: number, color: string): string {
   if (values.length < 2) {
     return `<line x1="${x}" y1="${y + h / 2}" x2="${x + w}" y2="${y + h / 2}" stroke="${color}" stroke-width="5" stroke-linecap="round" opacity=".95"/>`;
@@ -47,11 +55,16 @@ function lineChart(values: number[], x: number, y: number, w: number, h: number,
 }
 
 function statBox(label: string, value: string, x: number, y: number, w = 150, h = 95, valueSize = 30): string {
+  const labelSize = w < 130 ? 14 : label.length > 9 ? 15 : 17;
+  const labelSpacing = w < 130 ? 2 : 3;
+  const fittedValueSize = fitFontSize(value, valueSize, w - 46, Math.max(20, valueSize - 8));
+  const labelY = y + (h < 80 ? 28 : 34);
+  const valueY = y + (h < 80 ? h - 12 : 72);
   return `
     <g>
       <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="18" fill="url(#panel)" stroke="rgba(255,255,255,.1)"/>
-      <text x="${x + 18}" y="${y + 34}" fill="#9a9aa5" font-size="17" letter-spacing="3">${esc(label.toUpperCase())}</text>
-      <text x="${x + 18}" y="${y + 72}" fill="#f7f7fa" font-size="${valueSize}" font-weight="900">${esc(value)}</text>
+      <text x="${x + 18}" y="${labelY}" fill="#9a9aa5" font-size="${labelSize}" letter-spacing="${labelSpacing}">${esc(label.toUpperCase())}</text>
+      <text x="${x + 18}" y="${valueY}" fill="#f7f7fa" font-size="${fittedValueSize}" font-weight="900">${esc(value)}</text>
       <circle cx="${x + w - 28}" cy="${y + h - 28}" r="12" fill="#ff6a00" opacity=".18"/>
     </g>
   `;
@@ -64,7 +77,7 @@ function faceitLevelBox(player: PlayerSummary, x: number, y: number, w = 160, h 
       <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="18" fill="url(#panel)" stroke="rgba(255,255,255,.1)"/>
       <text x="${x + 18}" y="${y + 34}" fill="#9a9aa5" font-size="17" letter-spacing="3">FACEIT</text>
       <text x="${x + 18}" y="${y + 72}" fill="#f7f7fa" font-size="24" font-weight="900">LVL ${esc(label)}</text>
-      ${renderLevelIcon(player, x + w - 44, y + 48, 38)}
+      ${renderLevelIcon(player, x + w - 56, y + 41, 46)}
     </g>
   `;
 }
@@ -185,23 +198,25 @@ function renderBaseDefs(): string {
 
 function teammateRows(payload: StatCardPayload): string {
   if (!payload.topTeammates.length) {
-    return `<text x="642" y="870" fill="#a1a1aa" font-size="24">Недостаточно данных</text>`;
+    return `<text x="808" y="898" fill="#a1a1aa" font-size="24" text-anchor="middle">Недостаточно данных</text>`;
   }
   return payload.topTeammates
     .slice(0, 4)
     .map(
       (mate, index) =>
-        `<text x="642" y="${850 + index * 28}" fill="#f7f7fa" font-size="22" font-weight="800">${esc(trimText(mate.nickname, 18))}</text><text x="930" y="${850 + index * 28}" fill="#a1a1aa" font-size="18" text-anchor="end">${mate.matches} игр · ${mate.wins}W/${mate.losses}L</text>`
+        `<text x="610" y="${882 + index * 25}" fill="#f7f7fa" font-size="21" font-weight="800">${esc(trimText(mate.nickname, 17))}</text><text x="1000" y="${882 + index * 25}" fill="#a1a1aa" font-size="17" text-anchor="end">${mate.matches} игр · ${mate.wins}W/${mate.losses}L</text>`
     )
     .join("");
 }
 
 function highlightBox(label: string, value: string, x: number): string {
+  const labelSize = label.length > 6 ? 12 : 14;
+  const valueSize = fitFontSize(value, 28, 82, 22);
   return `
     <g>
       <rect x="${x}" y="1080" width="106" height="58" rx="14" fill="rgba(255,255,255,.03)" stroke="rgba(255,255,255,.07)"/>
-      <text x="${x + 18}" y="1105" fill="#9a9aa5" font-size="14" letter-spacing="2">${esc(label.toUpperCase())}</text>
-      <text x="${x + 18}" y="1132" fill="#f7f7fa" font-size="28" font-weight="900">${esc(value)}</text>
+      <text x="${x + 18}" y="1105" fill="#9a9aa5" font-size="${labelSize}" letter-spacing="1.5">${esc(label.toUpperCase())}</text>
+      <text x="${x + 18}" y="1132" fill="#f7f7fa" font-size="${valueSize}" font-weight="900">${esc(value)}</text>
     </g>
   `;
 }
@@ -209,6 +224,11 @@ function highlightBox(label: string, value: string, x: number): string {
 function renderStatSvg(payload: StatCardPayload): string {
   const stats = payload.currentWindow;
   const role = payload.role ?? "МАЛО ДАННЫХ";
+  const title = `${trimText(payload.player.nickname, 14)} НА FACEIT`;
+  const titleSize = fitFontSize(title, 64, 805, 48);
+  const kadValue = `${stats.kills} / ${stats.assists} / ${stats.deaths}`;
+  const kadValueSize = fitFontSize(kadValue, 32, 390, 24);
+  const roleSize = fitFontSize(role, 32, 390, 24);
 
   return `
   <svg width="${WIDTH}" height="${HEIGHT}" viewBox="0 0 ${WIDTH} ${HEIGHT}" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
@@ -220,7 +240,7 @@ function renderStatSvg(payload: StatCardPayload): string {
       <text x="250" y="72" fill="#8b8c96" font-size="16" letter-spacing="6">CS2 BOT</text>
     <text x="830" y="72" fill="#9ca3af" font-size="16" letter-spacing="6">${esc(payload.seasonLabel)}</text>
     <text x="48" y="145" fill="#a1a1aa" font-size="28" letter-spacing="9">СТАТИСТИКА</text>
-    <text x="48" y="232" fill="#f7f7fa" font-size="64" font-weight="900">${esc(trimText(payload.player.nickname, 14))} НА FACEIT</text>
+    <text x="48" y="232" fill="#f7f7fa" font-size="${titleSize}" font-weight="900">${esc(title)}</text>
     <text x="48" y="292" fill="#777984" font-size="28" letter-spacing="8">ЗА ПОСЛЕДНИЕ ${stats.window} МАТЧЕЙ</text>
 
     <g filter="url(#shadow)">
@@ -247,7 +267,7 @@ function renderStatSvg(payload: StatCardPayload): string {
       ${highlightBox("ADR", fmt(payload.highlights.bestAdr), 72)}
       ${highlightBox("K/D", fmt(payload.highlights.bestKd, 2), 190)}
       ${highlightBox("KILLS", fmt(payload.highlights.maxKills, 0), 308)}
-      ${highlightBox("Рейтинг", fmt(payload.highlights.bestRating, 2), 432)}
+      ${highlightBox("Рейт.", fmt(payload.highlights.bestRating, 2), 432)}
 
       ${statBox("Рейтинг 3.0", fmt(stats.kd, 2), 585, 325)}
       ${statBox("AVG KILLS", fmt(stats.avgKills), 755, 325)}
@@ -259,38 +279,40 @@ function renderStatSvg(payload: StatCardPayload): string {
       ${statBox("K/A/D", `${stats.kills}/${stats.assists}/${stats.deaths}`, 755, 555, 275, 95, 28)}
 
       <rect x="585" y="682" width="445" height="110" rx="20" fill="url(#panel)" stroke="rgba(255,255,255,.1)"/>
-      <text x="610" y="724" fill="#a1a1aa" font-size="18" letter-spacing="5">ПОСЛЕДНИЕ МАТЧИ</text>
-      <text x="965" y="724" fill="#f7f7fa" font-size="24" font-weight="900" text-anchor="end">${stats.wins} W / ${stats.losses} L</text>
+      <text x="610" y="721" fill="#a1a1aa" font-size="16" letter-spacing="3">ПОСЛЕДНИЕ МАТЧИ</text>
+      <text x="1004" y="721" fill="#f7f7fa" font-size="24" font-weight="900" text-anchor="end">${stats.wins} W / ${stats.losses} L</text>
       ${resultsPills(stats, 610, 742)}
 
       <rect x="585" y="815" width="445" height="140" rx="20" fill="url(#panel)" stroke="rgba(255,255,255,.1)"/>
-      <text x="610" y="850" fill="#a1a1aa" font-size="18" letter-spacing="5">ТОП ТИММЕЙТЫ</text>
+      <text x="610" y="850" fill="#a1a1aa" font-size="16" letter-spacing="3">ТОП ТИММЕЙТЫ</text>
       ${teammateRows(payload)}
 
       <rect x="585" y="980" width="445" height="76" rx="20" fill="url(#panel)" stroke="rgba(255,255,255,.1)"/>
-      <text x="610" y="1028" fill="#f7f7fa" font-size="34" font-weight="900">K / A / D ${stats.kills} / ${stats.assists} / ${stats.deaths}</text>
+      <text x="610" y="1007" fill="#a1a1aa" font-size="16" letter-spacing="4">K / A / D</text>
+      <text x="610" y="1042" fill="#f7f7fa" font-size="${kadValueSize}" font-weight="900">${esc(kadValue)}</text>
 
       <rect x="585" y="1078" width="445" height="76" rx="20" fill="url(#panel)" stroke="rgba(255,255,255,.1)"/>
       <text x="610" y="1106" fill="#a1a1aa" font-size="16" letter-spacing="5">РОЛЬ</text>
-      <text x="610" y="1142" fill="#f7f7fa" font-size="32" font-weight="900">${esc(role)}</text>
+      <text x="610" y="1142" fill="#f7f7fa" font-size="${roleSize}" font-weight="900">${esc(role)}</text>
     </g>
   </svg>`;
 }
 
 function compactPlayerPanel(payload: StatCardPayload, x: number, clipId: string): string {
   const stats = payload.currentWindow;
+  const y = 235;
 
   return `
     <g filter="url(#shadow)">
-      <rect x="${x}" y="215" width="495" height="330" rx="24" fill="url(#panel)" stroke="rgba(255,255,255,.1)"/>
-      ${renderAvatar(payload.player, x + 32, 250, 74, clipId)}
-      <text x="${x + 125}" y="285" fill="#f7f7fa" font-size="32" font-weight="900">${esc(trimText(payload.player.nickname, 15))}</text>
-      <text x="${x + 125}" y="318" fill="#a1a1aa" font-size="17">${esc((payload.player.country ?? "WORLD").toUpperCase())} · ELO ${payload.player.elo} · LVL ${payload.player.skillLevel}</text>
-      ${renderLevelIcon(payload.player, x + 418, 260, 54)}
-      ${statBox("Рейтинг 3.0", fmt(stats.kd, 2), x + 32, 360, 215, 64, 30)}
-      ${statBox("K/D", fmt(stats.kd, 2), x + 260, 360, 200, 64, 30)}
-      ${statBox("ADR", fmt(stats.adr), x + 32, 438, 215, 64, 30)}
-      ${statBox("Винрейт", `${fmt(stats.winrate, 0)}%`, x + 260, 438, 200, 64, 30)}
+      <rect x="${x}" y="${y}" width="495" height="330" rx="24" fill="url(#panel)" stroke="rgba(255,255,255,.1)"/>
+      ${renderAvatar(payload.player, x + 32, y + 35, 74, clipId)}
+      <text x="${x + 125}" y="${y + 70}" fill="#f7f7fa" font-size="32" font-weight="900">${esc(trimText(payload.player.nickname, 15))}</text>
+      <text x="${x + 125}" y="${y + 103}" fill="#a1a1aa" font-size="17">${esc((payload.player.country ?? "WORLD").toUpperCase())} · ELO ${payload.player.elo} · LVL ${payload.player.skillLevel}</text>
+      ${renderLevelIcon(payload.player, x + 418, y + 45, 54)}
+      ${statBox("Рейтинг 3.0", fmt(stats.kd, 2), x + 32, y + 145, 215, 64, 30)}
+      ${statBox("K/D", fmt(stats.kd, 2), x + 260, y + 145, 200, 64, 30)}
+      ${statBox("ADR", fmt(stats.adr), x + 32, y + 223, 215, 64, 30)}
+      ${statBox("Винрейт", `${fmt(stats.winrate, 0)}%`, x + 260, y + 223, 200, 64, 30)}
     </g>
   `;
 }

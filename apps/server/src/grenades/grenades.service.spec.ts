@@ -47,6 +47,26 @@ describe("GrenadesService flow filters", () => {
     expect(types).toEqual(["flash", "smoke"]);
   });
 
+  it("keeps CT smoke lineup filters compatible with BOTH side lineups", async () => {
+    const findMany = vi.fn().mockResolvedValue([]);
+    const service = new GrenadesService({ grenadeLineup: { findMany } } as never, {} as never);
+
+    await service.listLineups({ mapSlug: "mirage", side: "ct", areaSlug: "mid", type: "smoke", published: true });
+
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          map: { slug: "mirage" },
+          published: true,
+          areaSlug: "mid",
+          grenadeType: GrenadeType.SMOKE,
+          OR: [{ side: GrenadeSide.CT }, { side: GrenadeSide.BOTH }]
+        }),
+        include: { map: true }
+      })
+    );
+  });
+
   it("rejects unsupported uploaded media types", async () => {
     const service = new GrenadesService({} as never, {} as never);
 
