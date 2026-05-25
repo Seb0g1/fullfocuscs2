@@ -8,9 +8,14 @@ import { ConfigService } from "@nestjs/config";
 import type { GrenadeMediaItem } from "@fullfocus/shared";
 
 const MAX_MEDIA_BYTES = 64 * 1024 * 1024;
-const INTRO_SECONDS = 1.2;
+const DEFAULT_INTRO_SECONDS = 1.2;
 const OUTPUT_WIDTH = 1080;
 const OUTPUT_HEIGHT = 1920;
+const MIN_VIDEO_SCALE = 0.65;
+const MAX_VIDEO_SCALE = 2.5;
+const MAX_VIDEO_OFFSET = 960;
+const MIN_INTRO_SECONDS = 0.4;
+const MAX_INTRO_SECONDS = 4;
 const VIDEO_MIME_EXTENSIONS = new Map([
   ["video/mp4", ".mp4"],
   ["video/webm", ".webm"],
@@ -33,6 +38,19 @@ export interface GrenadeVideoInput {
   flightSeconds: unknown;
   aimFrameSeconds: unknown;
   title?: unknown;
+  videoScale?: unknown;
+  videoOffsetX?: unknown;
+  videoOffsetY?: unknown;
+  introSeconds?: unknown;
+}
+
+interface GrenadeVideoEditorSettings {
+  flightSeconds: number;
+  aimFrameSeconds: number;
+  videoScale: number;
+  videoOffsetX: number;
+  videoOffsetY: number;
+  introSeconds: number;
 }
 
 export interface GrenadeVideoOutput {
@@ -43,6 +61,7 @@ export interface GrenadeVideoOutput {
     width: number;
     height: number;
   };
+  editor: GrenadeVideoEditorSettings;
 }
 
 @Injectable()
@@ -56,8 +75,7 @@ export class GrenadeVideoService {
       throw new HttpException("Можно загрузить только webm, mp4 или mov видео", HttpStatus.BAD_REQUEST);
     }
 
-    const flightSeconds = parseSeconds(input.flightSeconds, "Время полёта должно быть числом больше 0", false);
-    const aimFrameSeconds = parseSeconds(input.aimFrameSeconds, "Стоп-кадр должен быть числом 0 или больше", true);
+    const editor = normalizeEditorSettings(input);
     const buffer = await input.file.toBuffer();
     if (!buffer.length) {
       throw new HttpException("Файл пустой", HttpStatus.BAD_REQUEST);
@@ -83,15 +101,17 @@ export class GrenadeVideoService {
 
     try {
       const source = await this.probe(sourcePath);
-      if (aimFrameSeconds > source.durationSeconds) {
+      if (editor.aimFrameSeconds > source.durationSeconds) {
         throw new HttpException("Стоп-кадр не может быть позже конца видео", HttpStatus.BAD_REQUEST);
       }
 
       const coverPath = this.coverPath();
+      const videoWidth = even(OUTPUT_WIDTH * editor.videoScale);
+      const overlay = overlayPosition(editor.videoOffsetX, editor.videoOffsetY);
       await this.runFfmpeg([
         "-y",
         "-ss",
-        String(aimFrameSeconds),
+        String(editor.aimFrameSeconds),
         "-i",
         sourcePath,
         "-frames:v",
@@ -110,7 +130,7 @@ export class GrenadeVideoService {
         "-i",
         aimFramePath,
         "-filter_complex",
-        `[0:v]scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=increase,crop=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT},setsar=1[bg];[1:v]scale=${OUTPUT_WIDTH}:-2,setsar=1[aim];[bg][aim]overlay=(W-w)/2:(H-h)/2,format=yuv420p[v]`,
+        `[0:v]scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=increase,crop=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT},setsar=1[bg];[1:v]scale=${videoWidth}:-2,setsar=1[aim];[bg][aim]overlay=${overlay},format=yuv420p[v]`,
         "-map",
         "[v]",
         "-frames:v",
@@ -125,7 +145,7 @@ export class GrenadeVideoService {
         "-loop",
         "1",
         "-t",
-        String(INTRO_SECONDS),
+        String(editor.introSeconds),
         "-i",
         thumbnailPath,
         "-loop",
@@ -135,7 +155,7 @@ export class GrenadeVideoService {
         "-i",
         sourcePath,
         "-filter_complex",
-        `[0:v]scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT},setsar=1,trim=duration=${INTRO_SECONDS},setpts=PTS-STARTPTS[intro];[1:v]scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=increase,crop=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT},setsar=1[bg];[2:v]scale=${OUTPUT_WIDTH}:-2,setsar=1[clip];[bg][clip]overlay=(W-w)/2:(H-h)/2:shortest=1,format=yuv420p,setpts=PTS-STARTPTS[main];[intro][main]concat=n=2:v=1:a=0[v]`,
+        `[0:v]scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT},setsar=1,trim=duration=${editor.introSeconds},setpts=PTS-STARTPTS[intro];[1:v]scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=increase,crop=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT},setsar=1[bg];[2:v]scale=${videoWidth}:-2,setsar=1[clip];[bg][clip]overlay=${overlay}:shortest=1,format=yuv420p,setpts=PTS-STARTPTS[main];[intro][main]concat=n=2:v=1:a=0[v]`,
         "-map",
         "[v]",
         "-an",
@@ -162,11 +182,16 @@ export class GrenadeVideoService {
           url,
           thumbnailUrl,
           caption: normalizeTitle(input.title),
-          flightSeconds,
-          aimFrameSeconds,
+          flightSeconds: editor.flightSeconds,
+          aimFrameSeconds: editor.aimFrameSeconds,
+          videoScale: editor.videoScale,
+          videoOffsetX: editor.videoOffsetX,
+          videoOffsetY: editor.videoOffsetY,
+          introSeconds: editor.introSeconds,
           adapted: true
         },
-        source
+        source,
+        editor
       };
     } finally {
       await Promise.all([rm(sourcePath, { force: true }), rm(aimFramePath, { force: true })]);
@@ -269,6 +294,41 @@ function parseSeconds(value: unknown, message: string, allowZero: boolean): numb
     throw new HttpException(message, HttpStatus.BAD_REQUEST);
   }
   return round(parsed);
+}
+
+function normalizeEditorSettings(input: GrenadeVideoInput): GrenadeVideoEditorSettings {
+  return {
+    flightSeconds: parseSeconds(input.flightSeconds, "Время полёта должно быть числом больше 0", false),
+    aimFrameSeconds: parseSeconds(input.aimFrameSeconds, "Стоп-кадр должен быть числом 0 или больше", true),
+    videoScale: parseRange(input.videoScale, 1, MIN_VIDEO_SCALE, MAX_VIDEO_SCALE, "Zoom видео должен быть от 0.65 до 2.5"),
+    videoOffsetX: parseRange(input.videoOffsetX, 0, -MAX_VIDEO_OFFSET, MAX_VIDEO_OFFSET, "Сдвиг X должен быть от -960 до 960"),
+    videoOffsetY: parseRange(input.videoOffsetY, 0, -MAX_VIDEO_OFFSET, MAX_VIDEO_OFFSET, "Сдвиг Y должен быть от -960 до 960"),
+    introSeconds: parseRange(input.introSeconds, DEFAULT_INTRO_SECONDS, MIN_INTRO_SECONDS, MAX_INTRO_SECONDS, "Длительность стоп-кадра должна быть от 0.4 до 4 сек.")
+  };
+}
+
+function parseRange(value: unknown, fallback: number, min: number, max: number, message: string): number {
+  if (value === undefined || value === null || String(value).trim() === "") {
+    return fallback;
+  }
+  const parsed = typeof value === "number" ? value : Number(String(value).replace(",", "."));
+  if (!Number.isFinite(parsed) || parsed < min || parsed > max) {
+    throw new HttpException(message, HttpStatus.BAD_REQUEST);
+  }
+  return round(parsed);
+}
+
+function even(value: number): number {
+  return Math.max(2, Math.round(value / 2) * 2);
+}
+
+function overlayPosition(offsetX: number, offsetY: number): string {
+  return `(W-w)/2${signedOffset(offsetX)}:(H-h)/2${signedOffset(offsetY)}`;
+}
+
+function signedOffset(value: number): string {
+  if (!value) return "";
+  return value > 0 ? `+${value}` : String(value);
 }
 
 function normalizeTitle(value: unknown): string | null {

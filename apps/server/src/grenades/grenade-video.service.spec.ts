@@ -48,7 +48,11 @@ describe("GrenadeVideoService", () => {
       file: videoFile("video/webm", Buffer.from("video")),
       flightSeconds: "2.4",
       aimFrameSeconds: "1.2",
-      title: "Флешка на Шорт"
+      title: "Флешка на Шорт",
+      videoScale: "1.25",
+      videoOffsetX: "40",
+      videoOffsetY: "-80",
+      introSeconds: "1.6"
     });
 
     expect(result.mediaItem).toMatchObject({
@@ -58,10 +62,45 @@ describe("GrenadeVideoService", () => {
       caption: "Флешка на Шорт",
       flightSeconds: 2.4,
       aimFrameSeconds: 1.2,
+      videoScale: 1.25,
+      videoOffsetX: 40,
+      videoOffsetY: -80,
+      introSeconds: 1.6,
       adapted: true
     });
     expect(result.source).toMatchObject({ durationSeconds: 4.5, width: 1080, height: 1920 });
+    expect(result.editor).toEqual({
+      flightSeconds: 2.4,
+      aimFrameSeconds: 1.2,
+      videoScale: 1.25,
+      videoOffsetX: 40,
+      videoOffsetY: -80,
+      introSeconds: 1.6
+    });
     expect(service.commands.map((item) => item.command)).toEqual(["ffprobe", "ffmpeg", "ffmpeg", "ffmpeg"]);
+    expect(service.commands[2]?.args.join(" ")).toContain("scale=1350:-2");
+    expect(service.commands[2]?.args.join(" ")).toContain("overlay=(W-w)/2+40:(H-h)/2-80");
+    expect(service.commands[3]?.args.join(" ")).toContain("trim=duration=1.6");
+  });
+
+  it("rejects editor settings outside safe ranges", async () => {
+    await expect(
+      service.process({
+        file: videoFile("video/mp4", Buffer.from("video")),
+        flightSeconds: 2,
+        aimFrameSeconds: 1,
+        videoScale: 3
+      })
+    ).rejects.toMatchObject({ status: 400 });
+
+    await expect(
+      service.process({
+        file: videoFile("video/mp4", Buffer.from("video")),
+        flightSeconds: 2,
+        aimFrameSeconds: 1,
+        introSeconds: 0.1
+      })
+    ).rejects.toMatchObject({ status: 400 });
   });
 
   it("rejects unsupported file types", async () => {

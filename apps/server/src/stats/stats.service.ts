@@ -38,7 +38,11 @@ export class StatsService {
   async buildPlayerStatPayload(input: string, window = 30, telegramId?: string): Promise<StatCardPayload> {
     try {
       const player = await this.resolvePlayer(input);
-      const matchStats = await this.faceit.getPlayerMatchStats(player.playerId, Math.max(window * 2, 60));
+      const fetchLimit = Math.max(window * 2, 60);
+      const [matchStats, history] = await Promise.all([
+        this.faceit.getPlayerMatchStats(player.playerId, fetchLimit),
+        this.faceit.getPlayerHistory(player.playerId, fetchLimit).catch(() => ({ items: [] }))
+      ]);
       await this.faceit.getPlayerLifetimeStats(player.playerId).catch(() => null);
 
       const records = (matchStats.items ?? [])
@@ -46,6 +50,9 @@ export class StatsService {
         .filter((record) => record.kills || record.deaths || record.result);
 
       const currentWindow = calculateWindowStats(records, window);
+      if (currentWindow.matches && currentWindow.eloSeries.length < 2) {
+        currentWindow.eloSeries = estimateEloTrend(records.slice(0, window), player.elo);
+      }
       const previousWindow = records.length > window ? calculateWindowStats(records.slice(window), window) : null;
       const payload: StatCardPayload = {
         generatedAt: new Date().toISOString(),
@@ -55,7 +62,7 @@ export class StatsService {
         currentWindow,
         previousWindow,
         highlights: buildHighlights(records.slice(0, window)),
-        topTeammates: [],
+        topTeammates: buildTopTeammates(history.items ?? [], player.playerId, window),
         role: inferRole(currentWindow)
       };
 
@@ -290,4 +297,97 @@ function parseResult(value: string): "W" | "L" | null {
     return "L";
   }
   return null;
+}
+
+function estimateEloTrend(recordsNewestFirst: MatchStatRecord[], currentElo: number): number[] {
+  if (!recordsNewestFirst.length || !currentElo) {
+    return [];
+  }
+
+  let cursor = currentElo;
+  const points = [cursor];
+  for (const record of recordsNewestFirst) {
+    cursor -= estimatedEloDelta(record);
+    points.push(cursor);
+  }
+  return points.reverse().map((value) => Math.round(value));
+}
+
+function estimatedEloDelta(record: MatchStatRecord): number {
+  const base = record.result === "W" ? 22 : record.result === "L" ? -22 : 0;
+  const kd = record.kd ?? (record.deaths > 0 ? record.kills / record.deaths : record.kills);
+  const performance = Math.max(-4, Math.min(4, Math.round((kd - 1) * 4)));
+  return base + performance;
+}
+
+function buildTopTeammates(historyItems: Record<string, unknown>[], playerId: string, window: number): StatCardPayload["topTeammates"] {
+  const teammates = new Map<string, { nickname: string; matches: number; wins: number; losses: number; lastSeenIndex: number }>();
+
+  historyItems.slice(0, window).forEach((item, index) => {
+    const team = findPlayerTeam(item, playerId);
+    if (!team) {
+      return;
+    }
+
+    const won = didTeamWin(item, team.key, team.team);
+    for (const mate of team.players) {
+      if (mate.playerId === playerId) {
+        continue;
+      }
+      const current = teammates.get(mate.playerId) ?? {
+        nickname: mate.nickname,
+        matches: 0,
+        wins: 0,
+        losses: 0,
+        lastSeenIndex: index
+      };
+      current.matches += 1;
+      current.lastSeenIndex = Math.min(current.lastSeenIndex, index);
+      if (won === true) current.wins += 1;
+      if (won === false) current.losses += 1;
+      teammates.set(mate.playerId, current);
+    }
+  });
+
+  return Array.from(teammates.values())
+    .sort((left, right) => right.matches - left.matches || right.wins - left.wins || left.lastSeenIndex - right.lastSeenIndex)
+    .slice(0, 4)
+    .map(({ nickname, matches, wins, losses }) => ({ nickname, matches, wins, losses }));
+}
+
+function findPlayerTeam(item: Record<string, unknown>, playerId: string): { key: string; team: Record<string, unknown>; players: Array<{ playerId: string; nickname: string }> } | null {
+  const teams = recordValue(item.teams);
+  for (const [key, rawTeam] of Object.entries(teams)) {
+    const team = recordValue(rawTeam);
+    const players = arrayValue(team.players)
+      .map((rawPlayer) => {
+        const player = recordValue(rawPlayer);
+        const id = stringValue(player.player_id);
+        const nickname = stringValue(player.nickname) || stringValue(player.game_player_name) || "unknown";
+        return id ? { playerId: id, nickname } : null;
+      })
+      .filter((player): player is { playerId: string; nickname: string } => Boolean(player));
+
+    if (players.some((player) => player.playerId === playerId)) {
+      return { key, team, players };
+    }
+  }
+  return null;
+}
+
+function didTeamWin(item: Record<string, unknown>, teamKey: string, team: Record<string, unknown>): boolean | null {
+  const results = recordValue(item.results);
+  const winner = stringValue(results.winner).toLowerCase();
+  if (!winner) {
+    return null;
+  }
+
+  const candidates = [teamKey, stringValue(team.team_id), stringValue(team.nickname)]
+    .map((value) => value.toLowerCase())
+    .filter(Boolean);
+  return candidates.includes(winner);
+}
+
+function arrayValue(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
 }

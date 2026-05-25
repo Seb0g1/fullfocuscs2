@@ -1,12 +1,13 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Bomb, Check, Eye, Film, ImageUp, Loader2, Pencil, Plus, Save, Trash2, X } from "lucide-react";
+import { AlertTriangle, Bomb, Check, Eye, ImageUp, Loader2, Pencil, Plus, Save, Trash2, X } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { AuthGate } from "@/components/auth-gate";
 import { SelectField, type SelectOption } from "@/components/select-field";
 import { api, mediaUrl } from "@/lib/api";
+import { GrenadeVideoEditor, type GrenadeVideoBuildPayload, type GrenadeVideoEditorState } from "./grenade-video-editor";
 
 type Side = "t" | "ct" | "both";
 type GrenadeType = "smoke" | "flash" | "molotov" | "he";
@@ -32,6 +33,10 @@ interface MediaItem {
   caption?: string | null;
   flightSeconds?: number | null;
   aimFrameSeconds?: number | null;
+  videoScale?: number | null;
+  videoOffsetX?: number | null;
+  videoOffsetY?: number | null;
+  introSeconds?: number | null;
   adapted?: boolean;
 }
 
@@ -42,6 +47,14 @@ interface ProcessedVideoResponse {
     durationSeconds: number;
     width: number;
     height: number;
+  };
+  editor?: {
+    flightSeconds: number;
+    aimFrameSeconds: number;
+    videoScale: number;
+    videoOffsetX: number;
+    videoOffsetY: number;
+    introSeconds: number;
   };
 }
 
@@ -166,8 +179,18 @@ function Grenades() {
   const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState({ mapId: "", side: "", type: "", areaSlug: "", published: "" });
   const [mapDraft, setMapDraft] = useState({ emoji: "", premiumEmojiId: "", buttonStyle: "default" as "default" | "primary" | "success" | "danger" });
-  const [videoFile, setVideoFile] = useState<File | null>(null);
-  const [videoAdapter, setVideoAdapter] = useState({ flightSeconds: "2", aimFrameSeconds: "0", notice: "" });
+  const [videoAdapter, setVideoAdapter] = useState<GrenadeVideoEditorState>({
+    flightSeconds: "2",
+    aimFrameSeconds: "0",
+    videoScale: "1",
+    videoOffsetX: "0",
+    videoOffsetY: "0",
+    introSeconds: "1.2",
+    notice: "",
+    processedUrl: null,
+    thumbnailUrl: null,
+    sourceInfo: null
+  });
 
   const maps = useQuery({ queryKey: ["maps"], queryFn: () => api<CsMap[]>("/admin/maps") });
   const lineups = useQuery({
@@ -233,19 +256,26 @@ function Grenades() {
   });
 
   const processVideo = useMutation({
-    mutationFn: async (file: File) => {
+    mutationFn: async (payload: GrenadeVideoBuildPayload) => {
       const body = new FormData();
-      body.append("file", file);
-      body.append("flightSeconds", videoAdapter.flightSeconds);
-      body.append("aimFrameSeconds", videoAdapter.aimFrameSeconds);
-      body.append("title", form.title || file.name);
+      body.append("file", payload.file);
+      body.append("flightSeconds", payload.flightSeconds);
+      body.append("aimFrameSeconds", payload.aimFrameSeconds);
+      body.append("videoScale", payload.videoScale);
+      body.append("videoOffsetX", payload.videoOffsetX);
+      body.append("videoOffsetY", payload.videoOffsetY);
+      body.append("introSeconds", payload.introSeconds);
+      body.append("title", payload.title || payload.file.name);
       return api<ProcessedVideoResponse>("/admin/media/grenade-video", { method: "POST", body });
     },
     onSuccess: (result) => {
       setError(null);
       setVideoAdapter((current) => ({
         ...current,
-        notice: `Видео собрано: ${result.source.width}x${result.source.height}, ${formatSeconds(result.source.durationSeconds)} сек.`
+        notice: `Видео собрано: ${result.source.width}x${result.source.height}, ${formatSeconds(result.source.durationSeconds)} сек.`,
+        processedUrl: result.mediaItem.url,
+        thumbnailUrl: result.mediaItem.thumbnailUrl ?? null,
+        sourceInfo: `${result.source.filename} · ${result.source.width}x${result.source.height} · ${formatSeconds(result.source.durationSeconds)} сек.`
       }));
       setForm((current) => ({
         ...current,
@@ -308,14 +338,10 @@ function Grenades() {
     }
   }
 
-  async function buildAdaptedVideo() {
-    if (!videoFile) {
-      setError("Выбери webm, mp4 или mov видео для адаптации.");
-      return;
-    }
+  async function buildAdaptedVideo(payload: GrenadeVideoBuildPayload) {
     setError(null);
-    setVideoAdapter((current) => ({ ...current, notice: "" }));
-    await processVideo.mutateAsync(videoFile);
+    setVideoAdapter((current) => ({ ...current, notice: "", processedUrl: null, thumbnailUrl: null }));
+    await processVideo.mutateAsync(payload);
   }
 
   function resetForm(mapId = selectedMapId) {
@@ -491,55 +517,13 @@ function Grenades() {
 
           <div className="space-y-3 border-t border-white/10 pt-4">
             <div className="text-xs font-black uppercase tracking-[0.28em] text-focus">Медиа</div>
-            <div className="rounded-lg border border-focus/25 bg-focus/5 p-3">
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <Film size={18} className="text-focus" />
-                  <div>
-                    <div className="text-sm font-black text-zinc-100">Видео-адаптер FullFocus</div>
-                    <div className="text-xs leading-5 text-zinc-500">Загрузи webm/mp4/mov, укажи тайминги, и сервер соберёт MP4 1080x1920 с фирменной обложкой.</div>
-                  </div>
-                </div>
-              </div>
-              <div className="grid gap-3 lg:grid-cols-[1fr_120px_150px]">
-                <label className="field flex cursor-pointer items-center justify-between gap-3">
-                  <span className="truncate text-zinc-300">{videoFile?.name ?? "Выбрать видео webm/mp4/mov"}</span>
-                  <ImageUp size={16} className="shrink-0 text-focus" />
-                  <input
-                    data-testid="grenade-video-upload"
-                    className="hidden"
-                    type="file"
-                    accept="video/webm,video/mp4,video/quicktime,.webm,.mp4,.mov"
-                    onChange={(event) => {
-                      setVideoFile(event.target.files?.[0] ?? null);
-                      setVideoAdapter((current) => ({ ...current, notice: "" }));
-                    }}
-                  />
-                </label>
-                <input
-                  className="field"
-                  inputMode="decimal"
-                  placeholder="Полёт, сек"
-                  value={videoAdapter.flightSeconds}
-                  onChange={(event) => setVideoAdapter({ ...videoAdapter, flightSeconds: event.target.value })}
-                />
-                <input
-                  className="field"
-                  inputMode="decimal"
-                  placeholder="Стоп-кадр, сек"
-                  value={videoAdapter.aimFrameSeconds}
-                  onChange={(event) => setVideoAdapter({ ...videoAdapter, aimFrameSeconds: event.target.value })}
-                />
-              </div>
-              <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="text-xs text-zinc-500">Стоп-кадр покажет точный момент прицеливания перед самим броском.</div>
-                <button className="btn btn-primary h-10" type="button" disabled={!videoFile || processVideo.isPending} onClick={buildAdaptedVideo}>
-                  {processVideo.isPending ? <Loader2 size={16} className="animate-spin" /> : <Film size={16} />}
-                  Собрать видео
-                </button>
-              </div>
-              {videoAdapter.notice ? <div className="mt-3 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-100">{videoAdapter.notice}</div> : null}
-            </div>
+            <GrenadeVideoEditor
+              title={form.title}
+              value={videoAdapter}
+              isProcessing={processVideo.isPending}
+              onChange={(patch) => setVideoAdapter((current) => ({ ...current, ...patch }))}
+              onBuild={buildAdaptedVideo}
+            />
             <div className="flex items-center justify-between gap-3">
               <div>
                 <div className="text-sm font-bold text-zinc-200">Файлы раскида</div>
@@ -803,6 +787,10 @@ function normalizeFormMediaItems(items: MediaItem[], title: string): MediaItem[]
       caption: item.caption?.trim() || title || null,
       flightSeconds: typeof item.flightSeconds === "number" ? item.flightSeconds : null,
       aimFrameSeconds: typeof item.aimFrameSeconds === "number" ? item.aimFrameSeconds : null,
+      videoScale: typeof item.videoScale === "number" ? item.videoScale : null,
+      videoOffsetX: typeof item.videoOffsetX === "number" ? item.videoOffsetX : null,
+      videoOffsetY: typeof item.videoOffsetY === "number" ? item.videoOffsetY : null,
+      introSeconds: typeof item.introSeconds === "number" ? item.introSeconds : null,
       adapted: item.adapted === true
     }))
     .filter((item) => item.url);

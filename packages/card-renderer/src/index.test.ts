@@ -61,7 +61,7 @@ describe("renderStatCard", () => {
       }
     });
 
-    expect(svg).toContain("История ELO недоступна");
+    expect(svg).toContain("Тренд ELO появится после матчей");
     expect(svg).toContain("88.0,708.0 508.0,708.0");
   });
 

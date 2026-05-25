@@ -121,7 +121,11 @@ export class GrenadesController {
       file,
       flightSeconds: fields.flightSeconds,
       aimFrameSeconds: fields.aimFrameSeconds,
-      title: fields.title
+      title: fields.title,
+      videoScale: fields.videoScale,
+      videoOffsetX: fields.videoOffsetX,
+      videoOffsetY: fields.videoOffsetY,
+      introSeconds: fields.introSeconds
     });
   }
 }

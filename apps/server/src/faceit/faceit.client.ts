@@ -45,6 +45,13 @@ export class FaceitClient {
     );
   }
 
+  getPlayerHistory(playerId: string, limit = 60) {
+    return this.request<{ items?: Array<Record<string, unknown>> }>(
+      `/players/${encodeURIComponent(playerId)}/history?game=${GAME_ID}&offset=0&limit=${Math.min(Math.max(limit, 1), 100)}`,
+      180
+    );
+  }
+
   getPlayerLifetimeStats(playerId: string) {
     return this.request<Record<string, unknown>>(`/players/${encodeURIComponent(playerId)}/stats/${GAME_ID}`, 300);
   }

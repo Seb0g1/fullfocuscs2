@@ -11,6 +11,10 @@ export const grenadeMediaItemSchema = z.object({
   caption: z.string().nullable().optional(),
   flightSeconds: z.number().positive().nullable().optional(),
   aimFrameSeconds: z.number().min(0).nullable().optional(),
+  videoScale: z.number().positive().nullable().optional(),
+  videoOffsetX: z.number().nullable().optional(),
+  videoOffsetY: z.number().nullable().optional(),
+  introSeconds: z.number().positive().nullable().optional(),
   adapted: z.boolean().optional()
 });
 

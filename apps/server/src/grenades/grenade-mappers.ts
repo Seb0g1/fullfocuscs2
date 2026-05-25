@@ -108,6 +108,10 @@ export function normalizeMediaItems(value: Prisma.JsonValue | null, fallback?: G
         caption: typeof record.caption === "string" ? record.caption : null,
         flightSeconds: numberOrNull(record.flightSeconds),
         aimFrameSeconds: numberOrNull(record.aimFrameSeconds),
+        videoScale: numberOrNull(record.videoScale),
+        videoOffsetX: numberOrNull(record.videoOffsetX),
+        videoOffsetY: numberOrNull(record.videoOffsetY),
+        introSeconds: numberOrNull(record.introSeconds),
         adapted: record.adapted === true
       }];
     });

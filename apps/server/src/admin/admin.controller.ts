@@ -217,7 +217,11 @@ export class AdminController {
       currentWindow: stats,
       previousWindow: null,
       highlights: { bestAdr: 134.3, bestKd: 3.33, maxKills: 41, bestRating: 2.3 },
-      topTeammates: [],
+      topTeammates: [
+        { nickname: "Chip063", matches: 12, wins: 8, losses: 4 },
+        { nickname: "hasqo__", matches: 9, wins: 6, losses: 3 },
+        { nickname: "Princess062", matches: 7, wins: 4, losses: 3 }
+      ],
       role: "ENTRY"
     };
 

@@ -287,7 +287,7 @@ function renderStatSvg(payload: StatCardPayload): string {
       ${statBox("ELO", String(payload.player.elo), 218, 468, 155)}
       ${faceitLevelBox(payload.player, 388, 468, 160)}
 
-      ${chartPanel("График ELO", stats.eloSeries, payload.player.elo, 48, 595, 500, 190, "#ff6a00", "История ELO недоступна")}
+      ${chartPanel("График ELO", stats.eloSeries, payload.player.elo, 48, 595, 500, 190, "#ff6a00", "Тренд ELO появится после матчей")}
       ${chartPanel("График K/D", stats.kdSeries, stats.kd, 48, 810, 500, 190, "#5aa2ff", "Мало данных для графика")}
 
       <rect x="48" y="1026" width="500" height="125" rx="20" fill="url(#panel)" stroke="rgba(255,255,255,.1)"/>
