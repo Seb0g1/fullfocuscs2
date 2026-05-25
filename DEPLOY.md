@@ -55,7 +55,6 @@ ADMIN_PUBLIC_URL=https://tiktok.sebog1.ru
 ADMIN_TELEGRAM_IDS=962443492
 ADMIN_DEV_LOGIN=false
 MEDIA_ROOT=/app/media
-DOCKER_NGINX_PORT=18080
 GRENADE_VIDEO_PRESET=superfast
 GRENADE_VIDEO_CRF=24
 GRENADE_VIDEO_THREADS=0
@@ -102,7 +101,7 @@ The server container runs Prisma migrations on startup.
 
 ## 5. HTTPS
 
-The Docker Nginx container listens only on `127.0.0.1:${DOCKER_NGINX_PORT}`. The default is `18080` to avoid common conflicts with other projects. Put host Nginx with Certbot in front of it.
+The Docker Nginx container listens only on `127.0.0.1:18080`. This port is hardcoded in `docker-compose.yml` for compatibility with legacy `docker-compose` on older VPS images. Put host Nginx with Certbot in front of it.
 
 ```bash
 sudo apt install -y nginx certbot python3-certbot-nginx
@@ -236,10 +235,12 @@ docker compose exec server sh -lc 'corepack pnpm --filter @fullfocus/server pris
 
 ### `address already in use`
 
-If `18080` is also used by another project, change only this value in `.env`:
+If `18080` is also used by another project, change the nginx port mapping in `docker-compose.yml`:
 
-```bash
-DOCKER_NGINX_PORT=18081
+```yaml
+nginx:
+  ports:
+    - "127.0.0.1:18081:80"
 ```
 
 Then restart the stack and update host Nginx `proxy_pass` to the same port.
