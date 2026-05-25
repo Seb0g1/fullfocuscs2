@@ -87,6 +87,7 @@ function SettingsPanel() {
   const [menuButtons, setMenuButtons] = useState<BotButtonConfig[]>(defaultMenuButtons);
   const [catalog, setCatalog] = useState<PremiumEmojiConfig[]>(defaultCatalog);
   const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     const welcome = settings.data?.find((item) => item.key === "welcomeText")?.value as { text?: string } | undefined;
@@ -103,34 +104,33 @@ function SettingsPanel() {
 
   const save = useMutation({
     mutationFn: async () => {
-      await Promise.all([
-        api("/admin/settings/welcomeText", {
-          method: "PATCH",
-          body: JSON.stringify({ value: { text: welcomeText.trim() } })
-        }),
-        api("/admin/settings/welcomeImageUrl", {
-          method: "PATCH",
-          body: JSON.stringify({ value: { url: welcomeImageUrl.trim() } })
-        }),
-        api("/admin/settings/menuButtons", {
-          method: "PATCH",
-          body: JSON.stringify({ value: menuButtons.map(cleanButton) })
-        }),
-        api("/admin/settings/premiumEmojiCatalog", {
-          method: "PATCH",
-          body: JSON.stringify({ value: catalog.map(cleanCatalogItem) })
+      await api("/admin/settings", {
+        method: "PATCH",
+        body: JSON.stringify({
+          settings: [
+            { key: "welcomeText", value: { text: welcomeText.trim() } },
+            { key: "welcomeImageUrl", value: { url: welcomeImageUrl.trim() } },
+            { key: "menuButtons", value: menuButtons.map(cleanButton) },
+            { key: "premiumEmojiCatalog", value: catalog.map(cleanCatalogItem) }
+          ]
         })
-      ]);
+      });
     },
     onSuccess: () => {
       setError(null);
+      setSaved(true);
       return queryClient.invalidateQueries({ queryKey: ["settings"] });
     },
-    onError: (mutationError) => setError(mutationError instanceof Error ? mutationError.message : "Не удалось сохранить настройки")
+    onError: (mutationError) => {
+      setSaved(false);
+      setError(mutationError instanceof Error ? mutationError.message : "Не удалось сохранить настройки");
+    }
   });
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    setError(null);
+    setSaved(false);
     await save.mutateAsync();
   }
 
@@ -167,6 +167,12 @@ function SettingsPanel() {
         <div className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-red-100">
           <AlertTriangle size={18} />
           {error ?? "Не удалось загрузить настройки. Проверь API и обнови страницу."}
+        </div>
+      ) : null}
+
+      {saved ? (
+        <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm font-semibold text-emerald-100">
+          Настройки сохранены. Бот применит их при следующем действии пользователя.
         </div>
       ) : null}
 

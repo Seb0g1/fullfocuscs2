@@ -34,4 +34,12 @@ describe("admin api helper", () => {
     const headers = init.headers as Headers;
     expect(headers.get("content-type")).toBe("application/json");
   });
+
+  it("turns network resets into a readable admin error", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
+
+    await expect(api("/admin/settings", { method: "PATCH", body: JSON.stringify({ settings: [] }) })).rejects.toThrow(
+      "Сервер не ответил. Проверь docker-compose logs server."
+    );
+  });
 });

@@ -7,6 +7,8 @@ import { AuthService } from "./auth.service";
 import { AdminGuard, AdminRoles, type AdminSessionUser } from "./admin.guard";
 import { PrismaService } from "../prisma.service";
 
+const ALLOWED_BOT_SETTING_KEYS = new Set(["welcomeText", "welcomeImageUrl", "menuButtons", "premiumEmojiCatalog", "donationButton"]);
+
 @Controller("admin")
 export class AdminController {
   constructor(
@@ -125,6 +127,32 @@ export class AdminController {
     return this.prisma.botSetting.findMany({ orderBy: { key: "asc" } });
   }
 
+  @Patch("settings")
+  @UseGuards(AdminGuard)
+  @AdminRoles("admin")
+  async updateSettings(@Body() body: { settings?: Array<{ key?: string; value?: unknown }> }) {
+    const settings = Array.isArray(body.settings) ? body.settings : null;
+    if (!settings?.length) {
+      throw new HttpException("Нужно передать массив settings", HttpStatus.BAD_REQUEST);
+    }
+
+    for (const setting of settings) {
+      if (!setting?.key || !ALLOWED_BOT_SETTING_KEYS.has(setting.key)) {
+        throw new HttpException(`Настройка ${setting?.key ?? "-"} не поддерживается`, HttpStatus.BAD_REQUEST);
+      }
+    }
+
+    return this.prisma.$transaction(
+      settings.map((setting) =>
+        this.prisma.botSetting.upsert({
+          where: { key: setting.key as string },
+          update: { value: setting.value as never },
+          create: { key: setting.key as string, value: setting.value as never }
+        })
+      )
+    );
+  }
+
   @Get("settings/runtime")
   @UseGuards(AdminGuard)
   @AdminRoles("admin")
@@ -143,6 +171,10 @@ export class AdminController {
   @UseGuards(AdminGuard)
   @AdminRoles("admin")
   async updateSetting(@Param("key") key: string, @Body() body: { value: unknown }) {
+    if (!ALLOWED_BOT_SETTING_KEYS.has(key)) {
+      throw new HttpException(`Настройка ${key} не поддерживается`, HttpStatus.BAD_REQUEST);
+    }
+
     return this.prisma.botSetting.upsert({
       where: { key },
       update: { value: body.value as never },

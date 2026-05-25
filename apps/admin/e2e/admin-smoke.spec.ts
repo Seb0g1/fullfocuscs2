@@ -42,6 +42,17 @@ test("users and settings pages expose production controls", async ({ page }) => 
   await expect(page.getByLabel("Приветственное сообщение")).toBeVisible();
   await expect(page.getByLabel("Картинка приветствия")).toBeVisible();
   await expect(page.getByText("https://tiktok.sebog1.ru", { exact: true })).toBeVisible();
+
+  const settingsPatchPaths: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (request.method() === "PATCH" && url.pathname.startsWith("/api/admin/settings")) {
+      settingsPatchPaths.push(url.pathname);
+    }
+  });
+  await page.getByRole("button", { name: "Сохранить всё" }).click();
+  await expect(page.getByText("Настройки сохранены")).toBeVisible();
+  expect(settingsPatchPaths).toEqual(["/api/admin/settings"]);
 });
 
 function startMockApi(): Promise<Server> {

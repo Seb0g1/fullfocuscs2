@@ -7,11 +7,16 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     headers.set("content-type", "application/json");
   }
 
-  const response = await fetch(`${API_URL}${path}`, {
-    ...init,
-    credentials: "include",
-    headers
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_URL}${path}`, {
+      ...init,
+      credentials: "include",
+      headers
+    });
+  } catch {
+    throw new Error("Сервер не ответил. Проверь docker-compose logs server.");
+  }
 
   if (!response.ok) {
     const text = await response.text();
