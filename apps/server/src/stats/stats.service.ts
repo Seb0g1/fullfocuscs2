@@ -36,30 +36,35 @@ export class StatsService {
   ) {}
 
   async buildPlayerStatPayload(input: string, window = 30, telegramId?: string): Promise<StatCardPayload> {
-    const player = await this.resolvePlayer(input);
-    const matchStats = await this.faceit.getPlayerMatchStats(player.playerId, Math.max(window * 2, 60));
-    await this.faceit.getPlayerLifetimeStats(player.playerId).catch(() => null);
+    try {
+      const player = await this.resolvePlayer(input);
+      const matchStats = await this.faceit.getPlayerMatchStats(player.playerId, Math.max(window * 2, 60));
+      await this.faceit.getPlayerLifetimeStats(player.playerId).catch(() => null);
 
-    const records = (matchStats.items ?? [])
-      .map((item) => this.normalizeMatchStats(item.stats ?? {}))
-      .filter((record) => record.kills || record.deaths || record.result);
+      const records = (matchStats.items ?? [])
+        .map((item) => this.normalizeMatchStats(item.stats ?? {}))
+        .filter((record) => record.kills || record.deaths || record.result);
 
-    const currentWindow = calculateWindowStats(records, window);
-    const previousWindow = records.length > window ? calculateWindowStats(records.slice(window), window) : null;
-    const payload: StatCardPayload = {
-      generatedAt: new Date().toISOString(),
-      botName: "FullFocus cs2",
-      seasonLabel: `SEASON ${new Date().getFullYear()}`,
-      player,
-      currentWindow,
-      previousWindow,
-      highlights: buildHighlights(records.slice(0, window)),
-      topTeammates: [],
-      role: inferRole(currentWindow)
-    };
+      const currentWindow = calculateWindowStats(records, window);
+      const previousWindow = records.length > window ? calculateWindowStats(records.slice(window), window) : null;
+      const payload: StatCardPayload = {
+        generatedAt: new Date().toISOString(),
+        botName: "FullFocus cs2",
+        seasonLabel: `SEASON ${new Date().getFullYear()}`,
+        player,
+        currentWindow,
+        previousWindow,
+        highlights: buildHighlights(records.slice(0, window)),
+        topTeammates: [],
+        role: inferRole(currentWindow)
+      };
 
-    await this.recordQuery(input, payload, "ok", telegramId);
-    return payload;
+      await this.recordQuery(input, payload, "ok", telegramId);
+      return payload;
+    } catch (error) {
+      await this.recordQuery(input, null, this.errorStatus(error), telegramId);
+      throw error;
+    }
   }
 
   async buildComparison(leftInput: string, rightInput: string, window = 30, telegramId?: string): Promise<ComparisonSummary> {
@@ -110,6 +115,23 @@ export class StatsService {
     });
   }
 
+  async getBotUser(telegramId: string) {
+    return this.prisma.botUser.findUnique({ where: { telegramId } });
+  }
+
+  async clearBotUserPlayer(telegramId: string) {
+    await this.prisma.botUser
+      .update({
+        where: { telegramId },
+        data: {
+          faceitPlayerId: null,
+          faceitNickname: null,
+          lastElo: null
+        }
+      })
+      .catch(() => undefined);
+  }
+
   private async resolvePlayer(input: string): Promise<PlayerSummary> {
     const parsed = parsePlayerLookupInput(input);
     let player: Record<string, unknown>;
@@ -134,7 +156,7 @@ export class StatsService {
     const game = recordValue(games[GAME_ID]);
 
     if (!playerId || !game) {
-      throw new HttpException("FACEIT player does not have CS2 data", HttpStatus.NOT_FOUND);
+      throw new HttpException("У игрока FACEIT нет данных по CS2", HttpStatus.NOT_FOUND);
     }
 
     return {
@@ -169,18 +191,25 @@ export class StatsService {
     };
   }
 
-  private async recordQuery(query: string, payload: StatCardPayload, status: string, telegramId?: string) {
+  private async recordQuery(query: string, payload: StatCardPayload | null, status: string, telegramId?: string) {
     await this.prisma.playerQueryLog
       .create({
         data: {
           telegramId,
           query,
-          faceitPlayerId: payload.player.playerId,
-          faceitNickname: payload.player.nickname,
+          faceitPlayerId: payload?.player.playerId,
+          faceitNickname: payload?.player.nickname,
           status
         }
       })
       .catch(() => undefined);
+  }
+
+  private errorStatus(error: unknown): string {
+    if (error instanceof HttpException) {
+      return `error:${error.getStatus()}`;
+    }
+    return "error";
   }
 }
 

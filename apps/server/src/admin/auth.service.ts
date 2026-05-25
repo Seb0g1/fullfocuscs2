@@ -4,6 +4,7 @@ import { ConfigService } from "@nestjs/config";
 import { AdminRole, type AdminUser } from "@prisma/client";
 import jwt from "jsonwebtoken";
 import { PrismaService } from "../prisma.service";
+import type { AdminRoleName, AdminSessionUser } from "./admin.guard";
 
 interface TelegramLoginPayload {
   id: string | number;
@@ -127,13 +128,13 @@ export class AuthService {
     });
   }
 
-  private publicUser(user: AdminUser) {
+  private publicUser(user: AdminUser): AdminSessionUser {
     return {
       id: user.id,
       telegramId: user.telegramId,
       username: user.username,
       firstName: user.firstName,
-      role: user.role.toLowerCase(),
+      role: user.role.toLowerCase() as AdminRoleName,
       createdAt: user.createdAt.toISOString(),
       updatedAt: user.updatedAt.toISOString()
     };

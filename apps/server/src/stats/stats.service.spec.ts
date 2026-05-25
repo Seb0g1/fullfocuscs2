@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { HttpException, HttpStatus } from "@nestjs/common";
 import { StatsService } from "./stats.service";
 
 describe("StatsService", () => {
@@ -40,5 +41,25 @@ describe("StatsService", () => {
     expect(payload.currentWindow.matches).toBe(30);
     expect(payload.currentWindow.kd).toBe(2);
     expect(payload.currentWindow.winrate).toBe(50);
+  });
+
+  it("logs failed FACEIT lookups", async () => {
+    const faceit = {
+      getPlayerByNickname: vi.fn().mockRejectedValue(new HttpException("Игрок FACEIT не найден", HttpStatus.NOT_FOUND))
+    };
+    const prisma = {
+      playerQueryLog: { create: vi.fn().mockResolvedValue({}) }
+    };
+    const service = new StatsService(faceit as never, {} as never, prisma as never, {} as never);
+
+    await expect(service.buildPlayerStatPayload("missing", 30, "42")).rejects.toBeInstanceOf(HttpException);
+
+    expect(prisma.playerQueryLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        telegramId: "42",
+        query: "missing",
+        status: "error:404"
+      })
+    });
   });
 });

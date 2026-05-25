@@ -9,9 +9,11 @@
     "typecheck": "corepack pnpm --filter @fullfocus/shared build && corepack pnpm -r typecheck",
     "test": "corepack pnpm -r test",
     "lint": "corepack pnpm -r lint",
+    "smoke:admin": "playwright test",
     "prisma:generate": "corepack pnpm --filter @fullfocus/server prisma:generate"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@types/node": "^24.0.0",
     "typescript": "^5.8.3",
     "vitest": "^3.2.4"

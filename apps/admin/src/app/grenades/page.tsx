@@ -64,8 +64,7 @@ interface LineupForm {
   description: string;
   difficulty: Difficulty;
   tags: string;
-  mediaItemsText: string;
-  thumbnailUrl: string;
+  mediaItems: MediaItem[];
   published: boolean;
 }
 
@@ -82,8 +81,7 @@ const emptyForm: LineupForm = {
   description: "",
   difficulty: "easy",
   tags: "",
-  mediaItemsText: "",
-  thumbnailUrl: "",
+  mediaItems: [],
   published: true
 };
 
@@ -117,6 +115,12 @@ const statusOptions: SelectOption[] = [
   { value: "", label: "Статус" },
   { value: "true", label: "Live" },
   { value: "false", label: "Draft" }
+];
+
+const mediaTypeOptions: SelectOption[] = [
+  { value: "image", label: "Фото" },
+  { value: "video", label: "Видео" },
+  { value: "external", label: "Внешняя ссылка" }
 ];
 
 export default function GrenadesPage() {
@@ -153,7 +157,7 @@ function Grenades() {
   const selectedMapId = form.mapId || selectedMap?.id || "";
   const mapSelectOptions = mapOptions.map((map) => ({ value: map.id, label: map.name }));
   const filterMapOptions = [{ value: "", label: "Все карты" }, ...mapSelectOptions];
-  const mediaItems = useMemo(() => parseMediaItems(form.mediaItemsText, form.title, form.thumbnailUrl), [form.mediaItemsText, form.title, form.thumbnailUrl]);
+  const mediaItems = useMemo(() => normalizeFormMediaItems(form.mediaItems, form.title), [form.mediaItems, form.title]);
   const firstMedia = mediaItems[0];
 
   const create = useMutation({
@@ -220,7 +224,7 @@ function Grenades() {
       }
       setForm((current) => ({
         ...current,
-        mediaItemsText: current.mediaItemsText ? `${current.mediaItemsText}\n${result.url}` : result.url
+        mediaItems: [...current.mediaItems, { type: inferMediaType(result.url), url: result.url, thumbnailUrl: null, caption: current.title || null }]
       }));
     } catch (uploadError) {
       setError(toErrorText(uploadError, "Не удалось загрузить файл"));
@@ -248,12 +252,30 @@ function Grenades() {
       description: lineup.description,
       difficulty: lineup.difficulty,
       tags: lineup.tags.join(", "),
-      mediaItemsText: (lineup.mediaItems.length ? lineup.mediaItems : [{ type: lineup.mediaType, url: lineup.mediaUrl, thumbnailUrl: lineup.thumbnailUrl }])
-        .map((item) => (item.caption ? `${item.url} | ${item.caption}` : item.url))
-        .join("\n"),
-      thumbnailUrl: lineup.thumbnailUrl ?? "",
+      mediaItems: lineup.mediaItems.length ? lineup.mediaItems : [{ type: lineup.mediaType, url: lineup.mediaUrl, thumbnailUrl: lineup.thumbnailUrl, caption: lineup.title }],
       published: lineup.published
     });
+  }
+
+  function addMediaItem() {
+    setForm((current) => ({
+      ...current,
+      mediaItems: [...current.mediaItems, { type: "image", url: "", thumbnailUrl: null, caption: current.title || null }]
+    }));
+  }
+
+  function updateMediaItem(index: number, patch: Partial<MediaItem>) {
+    setForm((current) => ({
+      ...current,
+      mediaItems: current.mediaItems.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item))
+    }));
+  }
+
+  function removeMediaItem(index: number) {
+    setForm((current) => ({
+      ...current,
+      mediaItems: current.mediaItems.filter((_, itemIndex) => itemIndex !== index)
+    }));
   }
 
   return (
@@ -354,21 +376,16 @@ function Grenades() {
             <div className="flex items-center justify-between gap-3">
               <div>
                 <div className="text-sm font-bold text-zinc-200">Файлы раскида</div>
-                <div className="text-xs text-zinc-500">Одна строка = один файл. Можно добавить caption через `url | caption`.</div>
+                <div className="text-xs text-zinc-500">Добавляй фото, видео или внешние ссылки. Первый файл станет главным в preview.</div>
               </div>
-              <label className="btn btn-ghost h-9 cursor-pointer">
-                <ImageUp size={16} />
-                Upload
-                <input className="hidden" type="file" accept="image/*,video/*" onChange={(event) => upload(event.target.files?.[0] ?? null, "lineup")} />
-              </label>
             </div>
-            <textarea
-              className="field min-h-24 resize-y"
-              placeholder="https://... или /media/file.mp4"
-              value={form.mediaItemsText}
-              onChange={(event) => setForm({ ...form, mediaItemsText: event.target.value })}
+            <MediaEditor
+              items={form.mediaItems}
+              onAdd={addMediaItem}
+              onRemove={removeMediaItem}
+              onUpdate={updateMediaItem}
+              onUpload={(file) => upload(file, "lineup")}
             />
-            <input className="field" placeholder="Thumbnail URL, если нужен" value={form.thumbnailUrl} onChange={(event) => setForm({ ...form, thumbnailUrl: event.target.value })} />
           </div>
 
           <div className="space-y-3 border-t border-white/10 pt-4">
@@ -508,8 +525,75 @@ function TelegramPreview({ form, mediaItems, firstMedia, selectedMap }: { form: 
   );
 }
 
+function MediaEditor({
+  items,
+  onAdd,
+  onRemove,
+  onUpdate,
+  onUpload
+}: {
+  items: MediaItem[];
+  onAdd: () => void;
+  onRemove: (index: number) => void;
+  onUpdate: (index: number, patch: Partial<MediaItem>) => void;
+  onUpload: (file: File | null) => void;
+}) {
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap gap-2">
+        <button className="btn btn-ghost h-9" type="button" onClick={onAdd}>
+          <Plus size={16} />
+          Добавить ссылку
+        </button>
+        <label className="btn btn-ghost h-9 cursor-pointer">
+          <ImageUp size={16} />
+          Upload
+          <input className="hidden" type="file" accept="image/*,video/*" onChange={(event) => onUpload(event.target.files?.[0] ?? null)} />
+        </label>
+      </div>
+
+      {items.length ? (
+        <div className="space-y-3">
+          {items.map((item, index) => (
+            <div key={index} className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div className="text-sm font-bold text-zinc-200">Медиа #{index + 1}</div>
+                <button className="btn btn-ghost h-8 px-2" type="button" onClick={() => onRemove(index)} title="Удалить медиа">
+                  <Trash2 size={15} />
+                </button>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-[150px_1fr]">
+                <SelectField value={item.type} options={mediaTypeOptions} onChange={(value) => onUpdate(index, { type: value as MediaType })} />
+                <input className="field" placeholder="URL медиа или /media/file.mp4" value={item.url} onChange={(event) => onUpdate(index, { url: event.target.value })} />
+              </div>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <input
+                  className="field"
+                  placeholder="Thumbnail URL, если нужен"
+                  value={item.thumbnailUrl ?? ""}
+                  onChange={(event) => onUpdate(index, { thumbnailUrl: event.target.value || null })}
+                />
+                <input
+                  className="field"
+                  placeholder="Caption для этого медиа"
+                  value={item.caption ?? ""}
+                  onChange={(event) => onUpdate(index, { caption: event.target.value || null })}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="grid min-h-24 place-items-center rounded-lg border border-dashed border-white/10 px-4 text-center text-sm text-zinc-500">
+          Добавь ссылку или загрузи файл, чтобы раскид можно было отправить в Telegram.
+        </div>
+      )}
+    </div>
+  );
+}
+
 function toPayload(form: LineupForm) {
-  const mediaItems = parseMediaItems(form.mediaItemsText, form.title, form.thumbnailUrl);
+  const mediaItems = normalizeFormMediaItems(form.mediaItems, form.title);
   const firstMedia = mediaItems[0];
   return {
     mapId: form.mapId,
@@ -529,26 +613,21 @@ function toPayload(form: LineupForm) {
       .filter(Boolean),
     mediaType: firstMedia?.type ?? "image",
     mediaUrl: firstMedia?.url ?? "",
-    thumbnailUrl: form.thumbnailUrl || firstMedia?.thumbnailUrl || null,
+    thumbnailUrl: firstMedia?.thumbnailUrl || null,
     mediaItems,
     published: form.published
   };
 }
 
-function parseMediaItems(value: string, title: string, thumbnailUrl: string): MediaItem[] {
-  return value
-    .split(/\n+/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const [url, caption] = line.split("|").map((part) => part.trim());
-      return {
-        type: inferMediaType(url),
-        url,
-        thumbnailUrl: thumbnailUrl || null,
-        caption: caption || title || null
-      };
-    });
+function normalizeFormMediaItems(items: MediaItem[], title: string): MediaItem[] {
+  return items
+    .map((item) => ({
+      type: item.type,
+      url: item.url.trim(),
+      thumbnailUrl: item.thumbnailUrl?.trim() || null,
+      caption: item.caption?.trim() || title || null
+    }))
+    .filter((item) => item.url);
 }
 
 function inferMediaType(url: string): MediaType {

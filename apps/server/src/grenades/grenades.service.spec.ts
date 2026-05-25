@@ -46,4 +46,16 @@ describe("GrenadesService flow filters", () => {
     );
     expect(types).toEqual(["flash", "smoke"]);
   });
+
+  it("rejects unsupported uploaded media types", async () => {
+    const service = new GrenadesService({} as never, {} as never);
+
+    await expect(
+      service.saveUploadedMedia({
+        filename: "payload.txt",
+        mimetype: "text/plain",
+        toBuffer: async () => Buffer.from("x")
+      })
+    ).rejects.toMatchObject({ status: 400 });
+  });
 });

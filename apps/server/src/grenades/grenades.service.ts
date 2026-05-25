@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
-import { extname, join } from "node:path";
+import { join } from "node:path";
 import { randomUUID } from "node:crypto";
-import { Injectable } from "@nestjs/common";
+import { HttpException, HttpStatus, Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { GrenadeSide, Prisma } from "@prisma/client";
 import type { GrenadeMediaItem } from "@fullfocus/shared";
@@ -36,6 +36,17 @@ export interface UpsertLineupInput {
   mediaItems?: GrenadeMediaItem[];
   published?: boolean;
 }
+
+const MAX_MEDIA_BYTES = 64 * 1024 * 1024;
+const UPLOAD_MIME_EXTENSIONS = new Map([
+  ["image/png", ".png"],
+  ["image/jpeg", ".jpg"],
+  ["image/webp", ".webp"],
+  ["image/gif", ".gif"],
+  ["video/mp4", ".mp4"],
+  ["video/webm", ".webm"],
+  ["video/quicktime", ".mov"]
+]);
 
 @Injectable()
 export class GrenadesService {
@@ -209,12 +220,25 @@ export class GrenadesService {
   }
 
   async saveUploadedMedia(file: { filename: string; mimetype: string; toBuffer: () => Promise<Buffer> }) {
+    const normalizedMime = file.mimetype.toLowerCase().split(";")[0]?.trim() ?? "";
+    const extension = UPLOAD_MIME_EXTENSIONS.get(normalizedMime);
+    if (!extension) {
+      throw new HttpException("Можно загрузить только изображения или видео для раскидов", HttpStatus.BAD_REQUEST);
+    }
+
+    const buffer = await file.toBuffer();
+    if (!buffer.length) {
+      throw new HttpException("Файл пустой", HttpStatus.BAD_REQUEST);
+    }
+    if (buffer.byteLength > MAX_MEDIA_BYTES) {
+      throw new HttpException("Файл слишком большой. Максимум 64 MB", HttpStatus.PAYLOAD_TOO_LARGE);
+    }
+
     const mediaRoot = this.config.get<string>("MEDIA_ROOT") ?? "./media";
     await mkdir(mediaRoot, { recursive: true });
-    const extension = extname(file.filename) || mimeToExt(file.mimetype);
     const filename = `${randomUUID()}${extension}`;
     const absolutePath = join(mediaRoot, filename);
-    await writeFile(absolutePath, await file.toBuffer());
+    await writeFile(absolutePath, buffer);
     const publicBase = this.config.get<string>("ADMIN_PUBLIC_URL")?.replace(/\/$/, "");
     const url = publicBase ? `${publicBase}/media/${filename}` : `/media/${filename}`;
     return {
@@ -295,14 +319,6 @@ export class GrenadesService {
       caption: input.title ?? null
     });
   }
-}
-
-function mimeToExt(mimetype: string): string {
-  if (mimetype.includes("png")) return ".png";
-  if (mimetype.includes("jpeg") || mimetype.includes("jpg")) return ".jpg";
-  if (mimetype.includes("webp")) return ".webp";
-  if (mimetype.includes("mp4")) return ".mp4";
-  return ".bin";
 }
 
 function uniqueBy<T>(items: T[], getKey: (item: T) => string): T[] {

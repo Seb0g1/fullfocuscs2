@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start -p 5030",
     "typecheck": "next typegen && tsc -p tsconfig.json --noEmit",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run --passWithNoTests --exclude \"e2e/**\"",
     "lint": "next typegen && tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

@@ -1,10 +1,10 @@
-import { Body, Controller, Get, Param, Patch, Post, Req, Res, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, HttpException, HttpStatus, Param, Patch, Post, Req, Res, UseGuards } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { calculateWindowStats, type MatchStatRecord, type StatCardPayload } from "@fullfocus/shared";
 import { renderStatCard } from "@fullfocus/card-renderer";
 import { AuthService } from "./auth.service";
-import { AdminGuard } from "./admin.guard";
+import { AdminGuard, AdminRoles, type AdminSessionUser } from "./admin.guard";
 import { PrismaService } from "../prisma.service";
 
 @Controller("admin")
@@ -40,12 +40,13 @@ export class AdminController {
 
   @Get("auth/me")
   @UseGuards(AdminGuard)
-  me(@Req() request: FastifyRequest & { adminUser?: unknown }) {
+  me(@Req() request: FastifyRequest & { adminUser?: AdminSessionUser }) {
     return request.adminUser;
   }
 
   @Get("overview")
   @UseGuards(AdminGuard)
+  @AdminRoles("editor")
   async overview() {
     const [users, admins, maps, lineups, publishedLineups, logs] = await Promise.all([
       this.prisma.botUser.count(),
@@ -77,6 +78,7 @@ export class AdminController {
 
   @Get("users")
   @UseGuards(AdminGuard)
+  @AdminRoles("admin")
   async users() {
     const admins = await this.prisma.adminUser.findMany({ orderBy: { createdAt: "asc" } });
     return admins.map((user) => ({
@@ -89,22 +91,57 @@ export class AdminController {
 
   @Patch("users/:id")
   @UseGuards(AdminGuard)
+  @AdminRoles("owner")
   async updateUser(@Param("id") id: string, @Body() body: { role?: "owner" | "admin" | "editor" }) {
     const role = body.role?.toUpperCase();
-    return this.prisma.adminUser.update({
+    if (!role || !["OWNER", "ADMIN", "EDITOR"].includes(role)) {
+      throw new HttpException("Некорректная роль администратора", HttpStatus.BAD_REQUEST);
+    }
+
+    await this.assertOwnerWillRemain(id, role);
+    const user = await this.prisma.adminUser.update({
       where: { id },
-      data: role ? { role: role as never } : {}
+      data: { role: role as never }
     });
+    return this.publicAdmin(user);
+  }
+
+  @Delete("users/:id")
+  @UseGuards(AdminGuard)
+  @AdminRoles("owner")
+  async deleteUser(@Param("id") id: string, @Req() request: FastifyRequest & { adminUser?: AdminSessionUser }) {
+    if (request.adminUser?.id === id) {
+      throw new HttpException("Нельзя удалить собственную учетку администратора", HttpStatus.BAD_REQUEST);
+    }
+    await this.assertOwnerWillRemain(id, "EDITOR");
+    await this.prisma.adminUser.delete({ where: { id } });
+    return { ok: true };
   }
 
   @Get("settings")
   @UseGuards(AdminGuard)
+  @AdminRoles("admin")
   async settings() {
     return this.prisma.botSetting.findMany({ orderBy: { key: "asc" } });
   }
 
+  @Get("settings/runtime")
+  @UseGuards(AdminGuard)
+  @AdminRoles("admin")
+  runtimeSettings() {
+    return {
+      adminPublicUrl: this.config.get<string>("ADMIN_PUBLIC_URL") ?? "",
+      botWebhookUrl: this.config.get<string>("BOT_WEBHOOK_URL") ?? "",
+      telegramBotUsername: this.config.get<string>("TELEGRAM_BOT_USERNAME") ?? "",
+      dockerNginxPort: this.config.get<string>("DOCKER_NGINX_PORT") ?? "18080",
+      nodeEnv: this.config.get<string>("NODE_ENV") ?? "development",
+      adminDevLogin: this.config.get<string>("ADMIN_DEV_LOGIN") === "true"
+    };
+  }
+
   @Patch("settings/:key")
   @UseGuards(AdminGuard)
+  @AdminRoles("admin")
   async updateSetting(@Param("key") key: string, @Body() body: { value: unknown }) {
     return this.prisma.botSetting.upsert({
       where: { key },
@@ -116,6 +153,7 @@ export class AdminController {
   @Get("cards/preview")
   @Post("cards/preview")
   @UseGuards(AdminGuard)
+  @AdminRoles("editor")
   async preview(@Res() reply: FastifyReply) {
     const records: MatchStatRecord[] = Array.from({ length: 30 }, (_, index) => ({
       result: index % 3 === 0 ? "L" : "W",
@@ -141,8 +179,8 @@ export class AdminController {
         faceitUrl: null,
         steamId64: null,
         elo: 2296,
-        skillLevel: 11,
-        skillLevelLabel: "11"
+        skillLevel: 10,
+        skillLevelLabel: "10"
       },
       currentWindow: stats,
       previousWindow: null,
@@ -167,5 +205,32 @@ export class AdminController {
       secure: this.config.get<string>("NODE_ENV") === "production",
       maxAge: 7 * 24 * 60 * 60
     });
+  }
+
+  private async assertOwnerWillRemain(targetId: string, nextRole: string) {
+    const target = await this.prisma.adminUser.findUnique({ where: { id: targetId } });
+    if (!target) {
+      throw new HttpException("Администратор не найден", HttpStatus.NOT_FOUND);
+    }
+    if (target.role !== "OWNER" || nextRole === "OWNER") {
+      return;
+    }
+
+    const ownerCount = await this.prisma.adminUser.count({ where: { role: "OWNER" } });
+    if (ownerCount <= 1) {
+      throw new HttpException("Нужен хотя бы один владелец панели", HttpStatus.BAD_REQUEST);
+    }
+  }
+
+  private publicAdmin(user: { id: string; telegramId: string; username: string | null; firstName: string | null; role: unknown; createdAt: Date; updatedAt: Date }) {
+    return {
+      id: user.id,
+      telegramId: user.telegramId,
+      username: user.username,
+      firstName: user.firstName,
+      role: String(user.role).toLowerCase(),
+      createdAt: user.createdAt.toISOString(),
+      updatedAt: user.updatedAt.toISOString()
+    };
   }
 }

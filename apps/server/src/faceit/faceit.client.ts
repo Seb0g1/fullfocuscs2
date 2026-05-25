@@ -51,7 +51,7 @@ export class FaceitClient {
 
   private async request<T>(path: string, ttlSeconds: number): Promise<T> {
     if (!this.apiKey) {
-      throw new FaceitApiError(HttpStatus.SERVICE_UNAVAILABLE, "FACEIT_API_KEY is not configured");
+      throw new FaceitApiError(HttpStatus.SERVICE_UNAVAILABLE, "FACEIT API ключ не настроен");
     }
 
     const cacheKey = `faceit:${path}`;
@@ -80,17 +80,17 @@ export class FaceitClient {
 
   private toMessage(status: number, body: string): string {
     if (status === 401 || status === 403) {
-      return "FACEIT API rejected the configured key";
+      return "FACEIT отклонил API ключ";
     }
     if (status === 404) {
-      return "FACEIT player was not found";
+      return "Игрок FACEIT не найден";
     }
     if (status === 429) {
-      return "FACEIT API rate limit reached";
+      return "FACEIT временно ограничил запросы";
     }
     if (status >= 500) {
-      return "FACEIT API is temporarily unavailable";
+      return "FACEIT временно недоступен";
     }
-    return body || "FACEIT API request failed";
+    return body || "Не удалось выполнить запрос к FACEIT";
   }
 }

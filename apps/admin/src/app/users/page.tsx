@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Shield, UserCog } from "lucide-react";
+import { AlertTriangle, Shield, Trash2, UserCog } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { AuthGate } from "@/components/auth-gate";
 import { SelectField } from "@/components/select-field";
@@ -34,12 +34,19 @@ export default function UsersPage() {
 
 function UsersAdmin() {
   const queryClient = useQueryClient();
+  const me = useQuery({ queryKey: ["me"], queryFn: () => api<AdminUser>("/admin/auth/me"), retry: false });
   const users = useQuery({ queryKey: ["admin-users"], queryFn: () => api<AdminUser[]>("/admin/users") });
+  const isOwner = me.data?.role === "owner";
   const update = useMutation({
     mutationFn: ({ id, role }: { id: string; role: AdminUser["role"] }) =>
       api(`/admin/users/${id}`, { method: "PATCH", body: JSON.stringify({ role }) }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-users"] })
   });
+  const remove = useMutation({
+    mutationFn: (id: string) => api(`/admin/users/${id}`, { method: "DELETE" }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-users"] })
+  });
+  const error = users.error ?? update.error ?? remove.error;
 
   return (
     <div className="space-y-6">
@@ -48,10 +55,10 @@ function UsersAdmin() {
         <h1 className="mt-2 text-3xl font-black sm:text-5xl">Администраторы</h1>
       </header>
 
-      {users.isError ? (
+      {error ? (
         <div className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-red-100">
           <AlertTriangle size={18} />
-          Не удалось загрузить список администраторов.
+          {error instanceof Error ? error.message : "Не удалось загрузить список администраторов."}
         </div>
       ) : null}
 
@@ -68,12 +75,13 @@ function UsersAdmin() {
                 <th className="px-3 py-3">Telegram ID</th>
                 <th className="px-3 py-3">Роль</th>
                 <th className="px-3 py-3">Создан</th>
+                <th className="px-3 py-3" />
               </tr>
             </thead>
             <tbody>
               {users.isLoading ? (
                 <tr>
-                  <td className="px-3 py-8 text-center text-zinc-500" colSpan={4}>
+                  <td className="px-3 py-8 text-center text-zinc-500" colSpan={5}>
                     Загружаем команду...
                   </td>
                 </tr>
@@ -97,16 +105,26 @@ function UsersAdmin() {
                         className="max-w-36"
                         value={user.role}
                         options={roleOptions}
-                        disabled={update.isPending}
+                        disabled={!isOwner || update.isPending}
                         onChange={(value) => update.mutate({ id: user.id, role: value as AdminUser["role"] })}
                       />
                     </td>
                     <td className="px-3 py-4 text-zinc-500">{new Date(user.createdAt).toLocaleDateString("ru-RU")}</td>
+                    <td className="px-3 py-4 text-right">
+                      <button
+                        className="btn btn-ghost h-9 px-2"
+                        disabled={!isOwner || user.id === me.data?.id || remove.isPending}
+                        onClick={() => remove.mutate(user.id)}
+                        title="Удалить администратора"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td className="px-3 py-8 text-center text-zinc-500" colSpan={4}>
+                  <td className="px-3 py-8 text-center text-zinc-500" colSpan={5}>
                     Администраторов пока нет. Первый разрешенный Telegram ID станет владельцем.
                   </td>
                 </tr>

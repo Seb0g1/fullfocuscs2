@@ -1,5 +1,6 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import clsx from "clsx";
 import { BarChart3, Bomb, LogOut, Menu, Settings, Shield, Users, X } from "lucide-react";
 import Link from "next/link";
@@ -14,10 +15,21 @@ const nav = [
   { href: "/settings", label: "Настройки", icon: Settings }
 ];
 
+interface Me {
+  role: "owner" | "admin" | "editor";
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const me = useQuery({ queryKey: ["me"], queryFn: () => api<Me>("/admin/auth/me"), retry: false });
+  const visibleNav = nav.filter((item) => {
+    if (item.href === "/users" || item.href === "/settings") {
+      return me.data?.role === "owner" || me.data?.role === "admin";
+    }
+    return true;
+  });
 
   async function logout() {
     await api("/admin/auth/logout", { method: "POST" }).catch(() => undefined);
@@ -35,7 +47,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
         {mobileOpen ? (
           <nav className="mt-3 grid gap-2">
-            {nav.map((item) => (
+            {visibleNav.map((item) => (
               <NavLink key={item.href} item={item} active={pathname === item.href} onClick={() => setMobileOpen(false)} />
             ))}
             <button className="btn btn-ghost justify-start" onClick={logout}>
@@ -49,7 +61,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <aside className="fixed inset-y-0 left-0 hidden w-64 border-r border-white/10 bg-black/30 p-5 backdrop-blur-xl lg:block">
         <Brand />
         <nav className="mt-8 space-y-2">
-          {nav.map((item) => (
+          {visibleNav.map((item) => (
             <NavLink key={item.href} item={item} active={pathname === item.href} />
           ))}
         </nav>

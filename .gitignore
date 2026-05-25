@@ -11,3 +11,5 @@ uploads
 *.log
 *.tsbuildinfo
 pnpm-lock.yaml.tmp
+playwright-report
+test-results

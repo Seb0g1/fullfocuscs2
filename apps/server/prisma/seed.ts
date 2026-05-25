@@ -24,6 +24,15 @@ async function main() {
       }
     }
   });
+
+  await prisma.botSetting.upsert({
+    where: { key: "welcomeImageUrl" },
+    update: {},
+    create: {
+      key: "welcomeImageUrl",
+      value: { url: "" }
+    }
+  });
 }
 
 main()

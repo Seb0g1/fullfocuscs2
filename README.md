@@ -47,3 +47,15 @@ For production, put Nginx behind HTTPS and set `BOT_WEBHOOK_URL` to `https://you
 Full VPS deployment instructions are in [DEPLOY.md](./DEPLOY.md).
 
 Production domain preset: `https://tiktok.sebog1.ru`. A sanitized env template is available in [.env.tiktok.example](./.env.tiktok.example).
+
+## Verification
+
+```bash
+corepack pnpm test
+corepack pnpm typecheck
+corepack pnpm build
+corepack pnpm lint
+corepack pnpm smoke:admin
+```
+
+`smoke:admin` starts the Next.js admin on `5030` with a mocked API and checks login, dashboard, grenade catalog, users and settings in Chromium. In CI, Chromium is installed with `pnpm exec playwright install --with-deps chromium`.

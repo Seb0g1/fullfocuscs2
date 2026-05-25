@@ -67,6 +67,7 @@ Notes:
 - `ADMIN_TELEGRAM_IDS` is a comma-separated allowlist of Telegram user IDs.
 - `BOT_WEBHOOK_URL` is applied automatically on server startup.
 - Telegram Login requires `tiktok.sebog1.ru` configured for the bot in BotFather via `/setdomain`.
+- In BotFather run `/setdomain`, choose `@fullfocuscs2_bot`, and set `tiktok.sebog1.ru` before testing Telegram Login.
 - Generate `JWT_SECRET` with `openssl rand -hex 32`.
 - Keep `.env` only on the server. Do not commit it.
 
@@ -177,6 +178,13 @@ In Telegram:
 2. Open `Статистика` and test a FACEIT nickname.
 3. Add a grenade lineup in the admin panel.
 4. Open `Раскид гранат` in the bot and verify the published lineup appears.
+
+Admin panel smoke:
+
+1. Open `https://tiktok.sebog1.ru/login`.
+2. Log in through Telegram Login.
+3. Check dashboard preview, settings, users and grenade catalog.
+4. In settings, set welcome text/image URL and verify `/start` uses them.
 
 ## 7. Updates
 

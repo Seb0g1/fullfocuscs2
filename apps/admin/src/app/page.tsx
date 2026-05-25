@@ -81,7 +81,7 @@ function Dashboard() {
                     <tr key={query.id} className="border-t border-white/10">
                       <td className="px-4 py-3 font-semibold">{query.query}</td>
                       <td className="px-4 py-3 text-zinc-300">{query.faceitNickname ?? "—"}</td>
-                      <td className="px-4 py-3 text-emerald-300">{query.status}</td>
+                      <td className={`px-4 py-3 ${statusClass(query.status)}`}>{statusLabel(query.status)}</td>
                       <td className="px-4 py-3 text-zinc-500">{new Date(query.createdAt).toLocaleString("ru-RU")}</td>
                     </tr>
                   ))
@@ -138,4 +138,18 @@ function ErrorBox({ message, onRetry }: { message: string; onRetry: () => void }
       </button>
     </div>
   );
+}
+
+function statusLabel(status: string): string {
+  if (status === "ok") return "OK";
+  if (status.startsWith("error:404")) return "Не найден";
+  if (status.startsWith("error:429")) return "Rate limit";
+  if (status.startsWith("error")) return "Ошибка";
+  return status;
+}
+
+function statusClass(status: string): string {
+  if (status === "ok") return "text-emerald-300";
+  if (status.startsWith("error")) return "text-red-300";
+  return "text-zinc-300";
 }
