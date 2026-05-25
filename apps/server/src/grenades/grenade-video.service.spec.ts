@@ -53,7 +53,13 @@ describe("GrenadeVideoService", () => {
       videoOffsetX: "40",
       videoOffsetY: "-80",
       introSeconds: "1.6",
-      hideWatermark: "true"
+      hideWatermark: "true",
+      zoomStartSeconds: "1.1",
+      zoomEndSeconds: "2.2",
+      zoomScale: "2.2",
+      zoomOffsetX: "60",
+      zoomOffsetY: "-40",
+      sourceCropMode: "center-wide"
     });
 
     expect(result.mediaItem).toMatchObject({
@@ -67,6 +73,12 @@ describe("GrenadeVideoService", () => {
       videoOffsetX: 40,
       videoOffsetY: -80,
       introSeconds: 1.6,
+      zoomStartSeconds: 1.1,
+      zoomEndSeconds: 2.2,
+      zoomScale: 2.2,
+      zoomOffsetX: 60,
+      zoomOffsetY: -40,
+      sourceCropMode: "center-wide",
       adapted: true
     });
     expect(result.source).toMatchObject({ durationSeconds: 4.5, width: 1080, height: 1920 });
@@ -77,13 +89,23 @@ describe("GrenadeVideoService", () => {
       videoOffsetX: 40,
       videoOffsetY: -80,
       introSeconds: 1.6,
-      hideWatermark: true
+      hideWatermark: true,
+      zoomStartSeconds: 1.1,
+      zoomEndSeconds: 2.2,
+      zoomScale: 2.2,
+      zoomOffsetX: 60,
+      zoomOffsetY: -40,
+      sourceCropMode: "center-wide"
     });
     expect(service.commands.map((item) => item.command)).toEqual(["ffprobe", "ffmpeg", "ffmpeg", "ffmpeg"]);
     expect(service.commands[2]?.args.join(" ")).toContain("scale=1350:-2");
+    expect(service.commands[2]?.args.join(" ")).toContain("crop=iw:trunc(min(ih\\,iw*9/16)/2)*2");
     expect(service.commands[2]?.args.join(" ")).toContain("overlay=(W-w)/2+40:(H-h)/2-80");
     expect(service.commands[2]?.args.join(" ")).toContain("drawbox=x=w-314:y=h-920");
     expect(service.commands[3]?.args.join(" ")).toContain("trim=duration=1.6");
+    expect(service.commands[3]?.args.join(" ")).toContain("split=2[clipSrc][zoomSrc]");
+    expect(service.commands[3]?.args.join(" ")).toContain("scale=2376:-2");
+    expect(service.commands[3]?.args.join(" ")).toContain("enable='between(t,1.1,2.2)'");
   });
 
   it("accepts zoomed crop settings up to 4.5 and can skip watermark cover", async () => {
@@ -94,7 +116,8 @@ describe("GrenadeVideoService", () => {
       videoScale: "4.5",
       videoOffsetX: "1200",
       videoOffsetY: "-1200",
-      hideWatermark: "false"
+      hideWatermark: "false",
+      sourceCropMode: "none"
     });
 
     const thumbnailArgs = service.commands[2]?.args.join(" ") ?? "";
@@ -160,6 +183,20 @@ describe("GrenadeVideoService", () => {
         file: videoFile("video/mp4", Buffer.from("video")),
         flightSeconds: 2,
         aimFrameSeconds: 2
+      })
+    ).rejects.toMatchObject({ status: 400 });
+  });
+
+  it("rejects zoom segment end timestamps beyond the video duration", async () => {
+    service.probeDuration = 1.5;
+
+    await expect(
+      service.process({
+        file: videoFile("video/mp4", Buffer.from("video")),
+        flightSeconds: 2,
+        aimFrameSeconds: 1,
+        zoomStartSeconds: 1,
+        zoomEndSeconds: 2
       })
     ).rejects.toMatchObject({ status: 400 });
   });

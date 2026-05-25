@@ -18,6 +18,12 @@ export interface GrenadeVideoEditorState {
   videoOffsetY: string;
   introSeconds: string;
   hideWatermark: string;
+  zoomStartSeconds: string;
+  zoomEndSeconds: string;
+  zoomScale: string;
+  zoomOffsetX: string;
+  zoomOffsetY: string;
+  sourceCropMode: "none" | "center-wide";
   notice: string;
   processedUrl?: string | null;
   thumbnailUrl?: string | null;
@@ -34,6 +40,12 @@ export interface GrenadeVideoBuildPayload {
   videoOffsetY: string;
   introSeconds: string;
   hideWatermark: string;
+  zoomStartSeconds: string;
+  zoomEndSeconds: string;
+  zoomScale: string;
+  zoomOffsetX: string;
+  zoomOffsetY: string;
+  sourceCropMode: "none" | "center-wide";
 }
 
 interface GrenadeVideoEditorProps {
@@ -73,10 +85,24 @@ export function GrenadeVideoEditor({ title, value, isProcessing, onChange, onBui
   const previewScale = clampNumber(value.videoScale, 1, MIN_VIDEO_SCALE, MAX_VIDEO_SCALE);
   const previewOffsetX = clampNumber(value.videoOffsetX, 0, MIN_VIDEO_OFFSET, MAX_VIDEO_OFFSET);
   const previewOffsetY = clampNumber(value.videoOffsetY, 0, MIN_VIDEO_OFFSET, MAX_VIDEO_OFFSET);
-  const previewOffsetCssX = previewOffsetX / 2.57;
-  const previewOffsetCssY = previewOffsetY / 2.57;
-  const hideWatermark = value.hideWatermark !== "false";
   const timelineMax = Math.max(duration, 0);
+  const zoomStart = clampNumber(value.zoomStartSeconds, 0, 0, Math.max(timelineMax, 1));
+  const zoomEnd = clampNumber(value.zoomEndSeconds, 0, 0, Math.max(timelineMax, 1));
+  const hasZoomSegment = zoomEnd > zoomStart;
+  const zoomActive = hasZoomSegment && currentTime >= zoomStart && currentTime <= zoomEnd;
+  const segmentScale = clampNumber(value.zoomScale, 2, 1, MAX_VIDEO_SCALE);
+  const segmentOffsetX = clampNumber(value.zoomOffsetX, 0, MIN_VIDEO_OFFSET, MAX_VIDEO_OFFSET);
+  const segmentOffsetY = clampNumber(value.zoomOffsetY, 0, MIN_VIDEO_OFFSET, MAX_VIDEO_OFFSET);
+  const effectiveScale = zoomActive ? segmentScale : previewScale;
+  const effectiveOffsetX = zoomActive ? segmentOffsetX : previewOffsetX;
+  const effectiveOffsetY = zoomActive ? segmentOffsetY : previewOffsetY;
+  const sourceCropMode = value.sourceCropMode === "none" ? "none" : "center-wide";
+  const isVerticalSource = Boolean(videoSize?.width && videoSize?.height && videoSize.height > videoSize.width * 1.2);
+  const usesWideCrop = sourceCropMode === "center-wide";
+  const cropPreviewStyle = usesWideCrop && isVerticalSource ? "inset(34.2% 0 34.2% 0)" : undefined;
+  const previewOffsetCssX = effectiveOffsetX / 2.57;
+  const previewOffsetCssY = effectiveOffsetY / 2.57;
+  const hideWatermark = value.hideWatermark !== "false";
   const timelineLabel = useMemo(() => `${formatTime(currentTime)} / ${duration ? formatTime(duration) : "00:00"}`, [currentTime, duration]);
 
   function updateDraft(patch: Partial<GrenadeVideoEditorState>) {
@@ -132,20 +158,63 @@ export function GrenadeVideoEditor({ title, value, isProcessing, onChange, onBui
       videoOffsetX: "0",
       videoOffsetY: "0",
       introSeconds: "1.2",
-      hideWatermark: "true"
+      hideWatermark: "true",
+      zoomStartSeconds: "0",
+      zoomEndSeconds: "0",
+      zoomScale: "2",
+      zoomOffsetX: "0",
+      zoomOffsetY: "0",
+      sourceCropMode: "center-wide"
     });
   }
 
-  function applyPreset(preset: "width" | "fill" | "aim") {
+  function applyPreset(preset: "width" | "fill" | "wide" | "aim") {
     if (preset === "width") {
-      updateDraft({ videoScale: "1", videoOffsetX: "0", videoOffsetY: "0" });
+      updateDraft({ videoScale: "1", videoOffsetX: "0", videoOffsetY: "0", sourceCropMode: "none" });
       return;
     }
     if (preset === "fill") {
-      updateDraft({ videoScale: fillScreenScale(videoSize), videoOffsetX: "0", videoOffsetY: "0" });
+      updateDraft({ videoScale: fillScreenScale(videoSize), videoOffsetX: "0", videoOffsetY: "0", sourceCropMode: "none" });
       return;
     }
-    updateDraft({ videoScale: "2", videoOffsetX: "0", videoOffsetY: "0" });
+    if (preset === "wide") {
+      updateDraft({ videoScale: "1", videoOffsetX: "0", videoOffsetY: "0", sourceCropMode: "center-wide" });
+      return;
+    }
+    const start = currentTime || clampNumber(value.aimFrameSeconds, 0, 0, Math.max(timelineMax, 1));
+    const end = timelineMax ? Math.min(timelineMax, start + 1.2) : start + 1.2;
+    updateDraft({
+      zoomStartSeconds: formatDecimal(start),
+      zoomEndSeconds: formatDecimal(Math.max(end, start + 0.4)),
+      zoomScale: "2",
+      zoomOffsetX: value.zoomOffsetX || "0",
+      zoomOffsetY: value.zoomOffsetY || "0"
+    });
+  }
+
+  function setZoomStart() {
+    const nextTime = videoRef.current?.currentTime ?? currentTime;
+    updateDraft({
+      zoomStartSeconds: formatDecimal(nextTime),
+      zoomEndSeconds: formatDecimal(Math.max(zoomEnd, nextTime + 0.4))
+    });
+  }
+
+  function setZoomEnd() {
+    const nextTime = videoRef.current?.currentTime ?? currentTime;
+    updateDraft({
+      zoomEndSeconds: formatDecimal(Math.max(nextTime, zoomStart + 0.4))
+    });
+  }
+
+  function resetZoomSegment() {
+    updateDraft({
+      zoomStartSeconds: "0",
+      zoomEndSeconds: "0",
+      zoomScale: "2",
+      zoomOffsetX: "0",
+      zoomOffsetY: "0"
+    });
   }
 
   async function buildVideo() {
@@ -165,7 +234,13 @@ export function GrenadeVideoEditor({ title, value, isProcessing, onChange, onBui
         videoOffsetX: value.videoOffsetX,
         videoOffsetY: value.videoOffsetY,
         introSeconds: value.introSeconds,
-        hideWatermark: value.hideWatermark
+        hideWatermark: value.hideWatermark,
+        zoomStartSeconds: value.zoomStartSeconds,
+        zoomEndSeconds: value.zoomEndSeconds,
+        zoomScale: value.zoomScale,
+        zoomOffsetX: value.zoomOffsetX,
+        zoomOffsetY: value.zoomOffsetY,
+        sourceCropMode
       });
     } catch {
       // The parent mutation already turns API errors into the page-level alert.
@@ -216,8 +291,9 @@ export function GrenadeVideoEditor({ title, value, isProcessing, onChange, onBui
                 preload="metadata"
                 className="absolute left-1/2 top-1/2 z-10 w-full max-w-none"
                 style={{
-                  transform: `translate(-50%, -50%) translate(${previewOffsetCssX}px, ${previewOffsetCssY}px) scale(${previewScale})`,
-                  transformOrigin: "center"
+                  transform: `translate(-50%, -50%) translate(${previewOffsetCssX}px, ${previewOffsetCssY}px) scale(${effectiveScale})`,
+                  transformOrigin: "center",
+                  clipPath: cropPreviewStyle
                 }}
                 onLoadedMetadata={(event) => {
                   const nextDuration = event.currentTarget.duration;
@@ -246,6 +322,16 @@ export function GrenadeVideoEditor({ title, value, isProcessing, onChange, onBui
               <span className="rounded-lg border border-white/10 bg-black/45 px-2 py-1 backdrop-blur">Preview 9:16</span>
               <span className="rounded-lg border border-focus/30 bg-focus/15 px-2 py-1 text-focus">1080x1920</span>
             </div>
+            {zoomActive ? (
+              <div className="absolute left-5 top-14 z-20 rounded-lg border border-focus/55 bg-focus/20 px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-focus backdrop-blur">
+                Aim zoom active
+              </div>
+            ) : null}
+            {usesWideCrop ? (
+              <div className="absolute left-5 top-[74px] z-20 rounded-lg border border-white/15 bg-black/65 px-3 py-2 text-[9px] font-black uppercase tracking-[0.18em] text-white/70 backdrop-blur">
+                Wide gameplay crop
+              </div>
+            ) : null}
             {hideWatermark ? (
               <div className="absolute right-5 top-[52%] z-20 rounded-lg border border-focus/55 bg-black/80 px-3 py-2 text-right text-[10px] font-black uppercase tracking-[0.18em] text-focus shadow-lg shadow-black/45">
                 FullFocus
@@ -277,9 +363,9 @@ export function GrenadeVideoEditor({ title, value, isProcessing, onChange, onBui
             </div>
           ) : null}
           <div className="mt-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs leading-5 text-zinc-400">
-            Scale {previewScale.toFixed(2)} · X {previewOffsetX} · Y {previewOffsetY}
+            Base {previewScale.toFixed(2)} · Aim {segmentScale.toFixed(2)} · {hasZoomSegment ? `${formatSecondsInput(value.zoomStartSeconds)}-${formatSecondsInput(value.zoomEndSeconds)} сек.` : "zoom-участок не задан"} · {usesWideCrop ? "фон виден" : "исходный кадр"}
             <br />
-            Чёрные поля убираются режимом «Заполнить экран». Для точного прицела выбери кадр на таймлайне и нажми «Поставить стоп-кадр».
+            «Прицел крупно» теперь включается только на выбранном участке. Поставь начало и конец zoom по таймлайну, базовый кадр останется обычным.
           </div>
         </div>
 
@@ -292,12 +378,15 @@ export function GrenadeVideoEditor({ title, value, isProcessing, onChange, onBui
               </div>
             </div>
 
-            <div className="mb-4 grid gap-2 sm:grid-cols-3">
+            <div className="mb-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
               <button className="btn btn-ghost h-10" type="button" onClick={() => applyPreset("width")}>
                 По ширине
               </button>
               <button className="btn btn-ghost h-10" type="button" onClick={() => applyPreset("fill")}>
                 Заполнить экран
+              </button>
+              <button className="btn btn-ghost h-10" type="button" onClick={() => applyPreset("wide")}>
+                Фон + широкий кадр
               </button>
               <button className="btn btn-ghost h-10" type="button" onClick={() => applyPreset("aim")}>
                 Прицел крупно
@@ -331,6 +420,35 @@ export function GrenadeVideoEditor({ title, value, isProcessing, onChange, onBui
                 <RotateCcw size={16} />
                 Сбросить кадр
               </button>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-focus/15 bg-focus/[0.04] p-3">
+            <div className="mb-3 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+              <div>
+                <div className="text-sm font-black text-zinc-100">Участок крупного прицела</div>
+                <div className="text-xs leading-5 text-zinc-500">
+                  Zoom включится только между выбранными секундами. Остальное видео останется в базовом масштабе.
+                </div>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-3">
+                <button className="btn btn-ghost h-9" type="button" disabled={!objectUrl} onClick={setZoomStart}>
+                  Начало zoom
+                </button>
+                <button className="btn btn-ghost h-9" type="button" disabled={!objectUrl} onClick={setZoomEnd}>
+                  Конец zoom
+                </button>
+                <button className="btn btn-ghost h-9" type="button" onClick={resetZoomSegment}>
+                  Сброс zoom
+                </button>
+              </div>
+            </div>
+            <div className="space-y-3">
+              <NumberControl label="Zoom от, сек" value={value.zoomStartSeconds} min={0} max={Math.max(duration, 1)} step={0.05} onChange={(next) => updateDraft({ zoomStartSeconds: next })} />
+              <NumberControl label="Zoom до, сек" value={value.zoomEndSeconds} min={0} max={Math.max(duration, 1)} step={0.05} onChange={(next) => updateDraft({ zoomEndSeconds: next })} />
+              <NumberControl label="Zoom прицела" value={value.zoomScale} min={1} max={MAX_VIDEO_SCALE} step={0.05} icon={<SlidersHorizontal size={14} />} onChange={(next) => updateDraft({ zoomScale: next })} />
+              <NumberControl label="Сдвиг zoom X" value={value.zoomOffsetX} min={MIN_VIDEO_OFFSET} max={MAX_VIDEO_OFFSET} step={10} onChange={(next) => updateDraft({ zoomOffsetX: next })} />
+              <NumberControl label="Сдвиг zoom Y" value={value.zoomOffsetY} min={MIN_VIDEO_OFFSET} max={MAX_VIDEO_OFFSET} step={10} onChange={(next) => updateDraft({ zoomOffsetY: next })} />
             </div>
           </div>
 

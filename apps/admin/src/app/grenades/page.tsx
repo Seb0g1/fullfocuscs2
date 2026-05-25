@@ -37,6 +37,12 @@ interface MediaItem {
   videoOffsetX?: number | null;
   videoOffsetY?: number | null;
   introSeconds?: number | null;
+  zoomStartSeconds?: number | null;
+  zoomEndSeconds?: number | null;
+  zoomScale?: number | null;
+  zoomOffsetX?: number | null;
+  zoomOffsetY?: number | null;
+  sourceCropMode?: "none" | "center-wide" | null;
   adapted?: boolean;
 }
 
@@ -55,6 +61,12 @@ interface ProcessedVideoResponse {
     videoOffsetX: number;
     videoOffsetY: number;
     introSeconds: number;
+    zoomStartSeconds: number;
+    zoomEndSeconds: number;
+    zoomScale: number;
+    zoomOffsetX: number;
+    zoomOffsetY: number;
+    sourceCropMode: "none" | "center-wide";
   };
 }
 
@@ -187,6 +199,12 @@ function Grenades() {
     videoOffsetY: "0",
     introSeconds: "1.2",
     hideWatermark: "true",
+    zoomStartSeconds: "0",
+    zoomEndSeconds: "0",
+    zoomScale: "2",
+    zoomOffsetX: "0",
+    zoomOffsetY: "0",
+    sourceCropMode: "center-wide",
     notice: "",
     processedUrl: null,
     thumbnailUrl: null,
@@ -267,6 +285,12 @@ function Grenades() {
       body.append("videoOffsetY", payload.videoOffsetY);
       body.append("introSeconds", payload.introSeconds);
       body.append("hideWatermark", payload.hideWatermark);
+      body.append("zoomStartSeconds", payload.zoomStartSeconds);
+      body.append("zoomEndSeconds", payload.zoomEndSeconds);
+      body.append("zoomScale", payload.zoomScale);
+      body.append("zoomOffsetX", payload.zoomOffsetX);
+      body.append("zoomOffsetY", payload.zoomOffsetY);
+      body.append("sourceCropMode", payload.sourceCropMode);
       body.append("title", payload.title || payload.file.name);
       return api<ProcessedVideoResponse>("/admin/media/grenade-video", { method: "POST", body });
     },
@@ -794,6 +818,12 @@ function normalizeFormMediaItems(items: MediaItem[], title: string): MediaItem[]
       videoOffsetX: typeof item.videoOffsetX === "number" ? item.videoOffsetX : null,
       videoOffsetY: typeof item.videoOffsetY === "number" ? item.videoOffsetY : null,
       introSeconds: typeof item.introSeconds === "number" ? item.introSeconds : null,
+      zoomStartSeconds: typeof item.zoomStartSeconds === "number" ? item.zoomStartSeconds : null,
+      zoomEndSeconds: typeof item.zoomEndSeconds === "number" ? item.zoomEndSeconds : null,
+      zoomScale: typeof item.zoomScale === "number" ? item.zoomScale : null,
+      zoomOffsetX: typeof item.zoomOffsetX === "number" ? item.zoomOffsetX : null,
+      zoomOffsetY: typeof item.zoomOffsetY === "number" ? item.zoomOffsetY : null,
+      sourceCropMode: item.sourceCropMode === "center-wide" || item.sourceCropMode === "none" ? item.sourceCropMode : null,
       adapted: item.adapted === true
     }))
     .filter((item) => item.url);

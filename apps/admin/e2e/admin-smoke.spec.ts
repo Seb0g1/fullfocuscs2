@@ -35,12 +35,20 @@ test("grenade admin uses dark custom controls and empty state", async ({ page })
   });
   await expect(page.getByText("Видео-редактор FullFocus")).toBeVisible();
   await page.getByRole("button", { name: "Прицел крупно" }).click();
-  await expect(page.getByRole("textbox", { name: "Zoom видео" })).toHaveValue("2");
+  await expect(page.getByRole("textbox", { name: "Zoom видео" })).toHaveValue("1");
+  await expect(page.getByRole("textbox", { name: "Zoom прицела" })).toHaveValue("2");
+  await expect(page.getByRole("textbox", { name: "Zoom до, сек" })).not.toHaveValue("0");
   await page.getByRole("button", { name: "По ширине" }).click();
   await expect(page.getByRole("textbox", { name: "Zoom видео" })).toHaveValue("1");
+  await page.getByRole("button", { name: "Фон + широкий кадр" }).click();
   await page.getByRole("textbox", { name: "Время полёта, сек" }).fill("2.4");
   await page.getByRole("textbox", { name: "Стоп-кадр, сек" }).fill("1.2");
   await page.getByRole("textbox", { name: "Zoom видео" }).fill("4.5");
+  await page.getByRole("textbox", { name: "Zoom от, сек" }).fill("1.1");
+  await page.getByRole("textbox", { name: "Zoom до, сек" }).fill("2.2");
+  await page.getByRole("textbox", { name: "Zoom прицела" }).fill("2.4");
+  await page.getByRole("textbox", { name: "Сдвиг zoom X" }).fill("80");
+  await page.getByRole("textbox", { name: "Сдвиг zoom Y" }).fill("-40");
   await page.getByRole("textbox", { name: "Сдвиг X" }).fill("1200");
   await page.getByRole("textbox", { name: "Сдвиг Y" }).fill("-1200");
   await page.getByRole("textbox", { name: "Стоп-кадр длится, сек" }).fill("1.6");
@@ -143,6 +151,12 @@ function startMockApi(): Promise<Server> {
           videoOffsetX: 1200,
           videoOffsetY: -1200,
           introSeconds: 1.6,
+          zoomStartSeconds: 1.1,
+          zoomEndSeconds: 2.2,
+          zoomScale: 2.4,
+          zoomOffsetX: 80,
+          zoomOffsetY: -40,
+          sourceCropMode: "center-wide",
           adapted: true
         },
         source: { filename: "lineup.webm", durationSeconds: 5.2, width: 1080, height: 1920 },
@@ -152,7 +166,13 @@ function startMockApi(): Promise<Server> {
           videoScale: 4.5,
           videoOffsetX: 1200,
           videoOffsetY: -1200,
-          introSeconds: 1.6
+          introSeconds: 1.6,
+          zoomStartSeconds: 1.1,
+          zoomEndSeconds: 2.2,
+          zoomScale: 2.4,
+          zoomOffsetX: 80,
+          zoomOffsetY: -40,
+          sourceCropMode: "center-wide"
         }
       });
     }

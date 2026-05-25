@@ -43,6 +43,12 @@ export interface GrenadeVideoInput {
   videoOffsetY?: unknown;
   introSeconds?: unknown;
   hideWatermark?: unknown;
+  zoomStartSeconds?: unknown;
+  zoomEndSeconds?: unknown;
+  zoomScale?: unknown;
+  zoomOffsetX?: unknown;
+  zoomOffsetY?: unknown;
+  sourceCropMode?: unknown;
 }
 
 interface GrenadeVideoEditorSettings {
@@ -53,6 +59,12 @@ interface GrenadeVideoEditorSettings {
   videoOffsetY: number;
   introSeconds: number;
   hideWatermark: boolean;
+  zoomStartSeconds: number;
+  zoomEndSeconds: number;
+  zoomScale: number;
+  zoomOffsetX: number;
+  zoomOffsetY: number;
+  sourceCropMode: "none" | "center-wide";
 }
 
 export interface GrenadeVideoOutput {
@@ -106,11 +118,21 @@ export class GrenadeVideoService {
       if (editor.aimFrameSeconds > source.durationSeconds) {
         throw new HttpException("Стоп-кадр не может быть позже конца видео", HttpStatus.BAD_REQUEST);
       }
+      const hasZoomSegment = editor.zoomEndSeconds > editor.zoomStartSeconds;
+      if (hasZoomSegment && editor.zoomEndSeconds > source.durationSeconds) {
+        throw new HttpException("Конец zoom не может быть позже конца видео", HttpStatus.BAD_REQUEST);
+      }
 
       const coverPath = this.coverPath();
       const videoWidth = even(OUTPUT_WIDTH * editor.videoScale);
+      const zoomVideoWidth = even(OUTPUT_WIDTH * editor.zoomScale);
       const overlay = overlayPosition(editor.videoOffsetX, editor.videoOffsetY);
+      const zoomOverlay = overlayPosition(editor.zoomOffsetX, editor.zoomOffsetY);
       const watermark = watermarkFilter(editor.hideWatermark);
+      const sourceCrop = sourceCropFilter(editor.sourceCropMode);
+      const mainClipFilter = hasZoomSegment
+        ? `[2:v]${sourceCrop}split=2[clipSrc][zoomSrc];[clipSrc]scale=${videoWidth}:-2,setsar=1[clip];[zoomSrc]scale=${zoomVideoWidth}:-2,setsar=1[zoom];[bg][clip]overlay=${overlay}:shortest=1[base];[base][zoom]overlay=${zoomOverlay}:enable='between(t,${editor.zoomStartSeconds},${editor.zoomEndSeconds})':shortest=1${watermark},format=yuv420p,setpts=PTS-STARTPTS[main]`
+        : `[2:v]${sourceCrop}scale=${videoWidth}:-2,setsar=1[clip];[bg][clip]overlay=${overlay}:shortest=1${watermark},format=yuv420p,setpts=PTS-STARTPTS[main]`;
       await this.runFfmpeg([
         "-y",
         "-ss",
@@ -133,7 +155,7 @@ export class GrenadeVideoService {
         "-i",
         aimFramePath,
         "-filter_complex",
-        `[0:v]scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=increase,crop=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT},setsar=1[bg];[1:v]scale=${videoWidth}:-2,setsar=1[aim];[bg][aim]overlay=${overlay}${watermark},format=yuv420p[v]`,
+        `[0:v]scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=increase,crop=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT},setsar=1[bg];[1:v]${sourceCrop}scale=${videoWidth}:-2,setsar=1[aim];[bg][aim]overlay=${overlay}${watermark},format=yuv420p[v]`,
         "-map",
         "[v]",
         "-frames:v",
@@ -158,7 +180,7 @@ export class GrenadeVideoService {
         "-i",
         sourcePath,
         "-filter_complex",
-        `[0:v]scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT},setsar=1,trim=duration=${editor.introSeconds},setpts=PTS-STARTPTS[intro];[1:v]scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=increase,crop=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT},setsar=1[bg];[2:v]scale=${videoWidth}:-2,setsar=1[clip];[bg][clip]overlay=${overlay}:shortest=1${watermark},format=yuv420p,setpts=PTS-STARTPTS[main];[intro][main]concat=n=2:v=1:a=0[v]`,
+        `[0:v]scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT},setsar=1,trim=duration=${editor.introSeconds},setpts=PTS-STARTPTS[intro];[1:v]scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=increase,crop=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT},setsar=1[bg];${mainClipFilter};[intro][main]concat=n=2:v=1:a=0[v]`,
         "-map",
         "[v]",
         "-an",
@@ -191,6 +213,12 @@ export class GrenadeVideoService {
           videoOffsetX: editor.videoOffsetX,
           videoOffsetY: editor.videoOffsetY,
           introSeconds: editor.introSeconds,
+          zoomStartSeconds: editor.zoomStartSeconds,
+          zoomEndSeconds: editor.zoomEndSeconds,
+          zoomScale: editor.zoomScale,
+          zoomOffsetX: editor.zoomOffsetX,
+          zoomOffsetY: editor.zoomOffsetY,
+          sourceCropMode: editor.sourceCropMode,
           adapted: true
         },
         source,
@@ -307,7 +335,13 @@ function normalizeEditorSettings(input: GrenadeVideoInput): GrenadeVideoEditorSe
     videoOffsetX: parseRange(input.videoOffsetX, 0, -MAX_VIDEO_OFFSET, MAX_VIDEO_OFFSET, "Сдвиг X должен быть от -1200 до 1200"),
     videoOffsetY: parseRange(input.videoOffsetY, 0, -MAX_VIDEO_OFFSET, MAX_VIDEO_OFFSET, "Сдвиг Y должен быть от -1200 до 1200"),
     introSeconds: parseRange(input.introSeconds, DEFAULT_INTRO_SECONDS, MIN_INTRO_SECONDS, MAX_INTRO_SECONDS, "Длительность стоп-кадра должна быть от 0.4 до 4 сек."),
-    hideWatermark: parseBoolean(input.hideWatermark, true)
+    hideWatermark: parseBoolean(input.hideWatermark, true),
+    zoomStartSeconds: parseSeconds(input.zoomStartSeconds, "Начало zoom должно быть числом 0 или больше", true),
+    zoomEndSeconds: parseSeconds(input.zoomEndSeconds, "Конец zoom должен быть числом 0 или больше", true),
+    zoomScale: parseRange(input.zoomScale, 2, 1, MAX_VIDEO_SCALE, "Zoom прицела должен быть от 1 до 4.5"),
+    zoomOffsetX: parseRange(input.zoomOffsetX, 0, -MAX_VIDEO_OFFSET, MAX_VIDEO_OFFSET, "Сдвиг zoom X должен быть от -1200 до 1200"),
+    zoomOffsetY: parseRange(input.zoomOffsetY, 0, -MAX_VIDEO_OFFSET, MAX_VIDEO_OFFSET, "Сдвиг zoom Y должен быть от -1200 до 1200"),
+    sourceCropMode: parseSourceCropMode(input.sourceCropMode)
   };
 }
 
@@ -337,6 +371,13 @@ function watermarkFilter(enabled: boolean): string {
   return ",drawbox=x=w-314:y=h-920:w=262:h=82:color=0xff6a00@0.9:t=4,drawbox=x=w-306:y=h-912:w=246:h=66:color=black@0.82:t=fill";
 }
 
+function sourceCropFilter(mode: "none" | "center-wide"): string {
+  if (mode !== "center-wide") {
+    return "";
+  }
+  return "crop=iw:trunc(min(ih\\,iw*9/16)/2)*2:0:(ih-trunc(min(ih\\,iw*9/16)/2)*2)/2,";
+}
+
 function signedOffset(value: number): string {
   if (!value) return "";
   return value > 0 ? `+${value}` : String(value);
@@ -352,6 +393,10 @@ function parseBoolean(value: unknown, fallback: boolean): boolean {
   }
   const normalized = String(value).toLowerCase().trim();
   return normalized === "true" || normalized === "1" || normalized === "yes" || normalized === "on";
+}
+
+function parseSourceCropMode(value: unknown): "none" | "center-wide" {
+  return value === "none" ? "none" : "center-wide";
 }
 
 function round(value: number): number {
