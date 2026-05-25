@@ -25,7 +25,23 @@ interface RuntimeSettings {
 }
 
 interface BotButtonConfig {
-  key: "stats" | "compare" | "grenades" | "leaderboard" | "settings" | "profile" | "favorites" | "training" | "search";
+  key:
+    | "stats"
+    | "compare"
+    | "grenades"
+    | "leaderboard"
+    | "settings"
+    | "profile"
+    | "favorites"
+    | "training"
+    | "search"
+    | "menu"
+    | "back"
+    | "backToMaps"
+    | "favorite"
+    | "bindFaceit"
+    | "otherPlayer"
+    | "myStats";
   label: string;
   fallbackEmoji: string;
   premiumEmojiId: string | null;
@@ -49,8 +65,18 @@ const defaultMenuButtons: BotButtonConfig[] = [
   { key: "favorites", label: "Избранное", fallbackEmoji: "⭐", premiumEmojiId: null, style: "default", enabled: true },
   { key: "training", label: "Тренировка", fallbackEmoji: "🧠", premiumEmojiId: null, style: "default", enabled: true },
   { key: "search", label: "Поиск", fallbackEmoji: "🔎", premiumEmojiId: null, style: "default", enabled: true },
-  { key: "settings", label: "Настройки", fallbackEmoji: "⚙️", premiumEmojiId: null, style: "primary", enabled: true }
+  { key: "settings", label: "Настройки", fallbackEmoji: "⚙️", premiumEmojiId: null, style: "primary", enabled: true },
+  { key: "menu", label: "Меню", fallbackEmoji: "🏠", premiumEmojiId: null, style: "primary", enabled: true },
+  { key: "back", label: "Назад", fallbackEmoji: "⬅️", premiumEmojiId: null, style: "default", enabled: true },
+  { key: "backToMaps", label: "К выбору карты", fallbackEmoji: "🗺️", premiumEmojiId: null, style: "primary", enabled: true },
+  { key: "favorite", label: "В избранное", fallbackEmoji: "⭐", premiumEmojiId: null, style: "success", enabled: true },
+  { key: "bindFaceit", label: "Привязать FACEIT", fallbackEmoji: "🔗", premiumEmojiId: null, style: "primary", enabled: true },
+  { key: "otherPlayer", label: "Другой игрок", fallbackEmoji: "👤", premiumEmojiId: null, style: "default", enabled: true },
+  { key: "myStats", label: "Моя статистика", fallbackEmoji: "📈", premiumEmojiId: null, style: "success", enabled: true }
 ];
+
+const mainMenuKeys = new Set(["stats", "compare", "grenades", "leaderboard", "profile", "favorites", "training", "search", "settings"]);
+const actionPreviewKeys = ["favorite", "back", "backToMaps", "menu"];
 
 const defaultCatalog: PremiumEmojiConfig[] = [
   { key: "smoke", title: "Смок", fallbackEmoji: "💨", customEmojiId: "" },
@@ -97,11 +123,15 @@ function SettingsPanel() {
     const image = settings.data?.find((item) => item.key === "welcomeImageUrl")?.value as { url?: string } | undefined;
     setWelcomeImageUrl(image?.url ?? "");
 
-    setMenuButtons(normalizeMenuButtons(settings.data?.find((item) => item.key === "menuButtons")?.value));
+    setMenuButtons(normalizeMenuButtons(settings.data?.find((item) => item.key === "botButtons")?.value, settings.data?.find((item) => item.key === "menuButtons")?.value));
     setCatalog(normalizeCatalog(settings.data?.find((item) => item.key === "premiumEmojiCatalog")?.value));
   }, [settings.data]);
 
-  const enabledPreview = useMemo(() => menuButtons.filter((button) => button.enabled), [menuButtons]);
+  const enabledPreview = useMemo(() => menuButtons.filter((button) => button.enabled && mainMenuKeys.has(button.key)), [menuButtons]);
+  const actionPreview = useMemo(
+    () => actionPreviewKeys.flatMap((key) => menuButtons.find((button) => button.key === key && button.enabled) ?? []),
+    [menuButtons]
+  );
 
   const save = useMutation({
     mutationFn: async () => {
@@ -111,7 +141,8 @@ function SettingsPanel() {
           settings: [
             { key: "welcomeText", value: { text: welcomeText.trim() } },
             { key: "welcomeImageUrl", value: { url: welcomeImageUrl.trim() } },
-            { key: "menuButtons", value: menuButtons.map(cleanButton) },
+            { key: "botButtons", value: menuButtons.map(cleanButton) },
+            { key: "menuButtons", value: menuButtons.filter((button) => mainMenuKeys.has(button.key)).map(cleanButton) },
             { key: "premiumEmojiCatalog", value: catalog.map(cleanCatalogItem) }
           ]
         })
@@ -287,7 +318,7 @@ function SettingsPanel() {
                     </div>
                     <label className="flex items-center gap-2 text-sm text-zinc-300">
                       <input type="checkbox" checked={button.enabled} onChange={(event) => patchButton(index, { enabled: event.target.checked })} />
-                      В меню
+                      Активно
                     </label>
                   </div>
                   <div className="grid gap-3 lg:grid-cols-[1fr_92px_1.2fr_150px]">
@@ -352,6 +383,17 @@ function SettingsPanel() {
                   </div>
                 ))}
               </div>
+              <div className="mt-4 border-t border-white/10 pt-3">
+                <div className="mb-2 text-xs font-black uppercase tracking-[0.2em] text-zinc-500">После раскида</div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {actionPreview.map((button) => (
+                    <div key={button.key} className={`rounded-md px-3 py-2 text-center text-sm font-bold ${previewStyle(button.style)}`}>
+                      {button.premiumEmojiId ? "" : `${button.fallbackEmoji} `}
+                      {button.label}
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           </section>
 
@@ -382,8 +424,8 @@ function Env({ name, value }: { name: string; value?: string }) {
   );
 }
 
-function normalizeMenuButtons(value: unknown): BotButtonConfig[] {
-  const configured = Array.isArray(value) ? value : [];
+function normalizeMenuButtons(value: unknown, legacyValue?: unknown): BotButtonConfig[] {
+  const configured = [...(Array.isArray(legacyValue) ? legacyValue : []), ...(Array.isArray(value) ? value : [])];
   return defaultMenuButtons.map((fallback) => {
     const item = configured.find((candidate) => isRecord(candidate) && candidate.key === fallback.key);
     if (!isRecord(item)) {

@@ -24,6 +24,11 @@ export interface GrenadeVideoEditorState {
   zoomOffsetX: string;
   zoomOffsetY: string;
   sourceCropMode: "none" | "center-wide";
+  hideSourceLogo: string;
+  logoCoverX: string;
+  logoCoverY: string;
+  logoCoverWidth: string;
+  logoCoverHeight: string;
   notice: string;
   processedUrl?: string | null;
   thumbnailUrl?: string | null;
@@ -46,6 +51,11 @@ export interface GrenadeVideoBuildPayload {
   zoomOffsetX: string;
   zoomOffsetY: string;
   sourceCropMode: "none" | "center-wide";
+  hideSourceLogo: string;
+  logoCoverX: string;
+  logoCoverY: string;
+  logoCoverWidth: string;
+  logoCoverHeight: string;
 }
 
 interface GrenadeVideoEditorProps {
@@ -59,7 +69,7 @@ interface GrenadeVideoEditorProps {
 export function GrenadeVideoEditor({ title, value, isProcessing, onChange, onBuild }: GrenadeVideoEditorProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
@@ -68,6 +78,7 @@ export function GrenadeVideoEditor({ title, value, isProcessing, onChange, onBui
   const [localError, setLocalError] = useState<string | null>(null);
 
   useEffect(() => {
+    const file = files[0];
     if (!file) {
       setObjectUrl(null);
       return;
@@ -80,7 +91,7 @@ export function GrenadeVideoEditor({ title, value, isProcessing, onChange, onBui
     setVideoSize(null);
     setIsPlaying(false);
     return () => URL.revokeObjectURL(nextUrl);
-  }, [file]);
+  }, [files]);
 
   const previewScale = clampNumber(value.videoScale, 1, MIN_VIDEO_SCALE, MAX_VIDEO_SCALE);
   const previewOffsetX = clampNumber(value.videoOffsetX, 0, MIN_VIDEO_OFFSET, MAX_VIDEO_OFFSET);
@@ -100,6 +111,19 @@ export function GrenadeVideoEditor({ title, value, isProcessing, onChange, onBui
   const isVerticalSource = Boolean(videoSize?.width && videoSize?.height && videoSize.height > videoSize.width * 1.2);
   const usesWideCrop = sourceCropMode === "center-wide";
   const cropPreviewStyle = usesWideCrop && isVerticalSource ? "inset(34.2% 0 34.2% 0)" : undefined;
+  const cropBandTop = usesWideCrop && isVerticalSource ? 34.2 : 0;
+  const cropBandHeight = usesWideCrop && isVerticalSource ? 31.6 : 100;
+  const hideSourceLogo = value.hideSourceLogo !== "false";
+  const logoCoverX = clampNumber(value.logoCoverX, 82, 0, 100);
+  const logoCoverY = clampNumber(value.logoCoverY, 2, 0, 100);
+  const logoCoverWidth = clampNumber(value.logoCoverWidth, 16, 1, 45);
+  const logoCoverHeight = clampNumber(value.logoCoverHeight, 8, 1, 35);
+  const logoCoverStyle = {
+    left: `${logoCoverX}%`,
+    top: `${cropBandTop + (logoCoverY * cropBandHeight) / 100}%`,
+    width: `${logoCoverWidth}%`,
+    height: `${(logoCoverHeight * cropBandHeight) / 100}%`
+  };
   const previewOffsetCssX = effectiveOffsetX / 2.57;
   const previewOffsetCssY = effectiveOffsetY / 2.57;
   const hideWatermark = value.hideWatermark !== "false";
@@ -110,8 +134,7 @@ export function GrenadeVideoEditor({ title, value, isProcessing, onChange, onBui
   }
 
   function chooseFile(event: ChangeEvent<HTMLInputElement>) {
-    const nextFile = event.target.files?.[0] ?? null;
-    setFile(nextFile);
+    setFiles(event.target.files ? Array.from(event.target.files) : []);
     setLocalError(null);
     onChange({ notice: "", processedUrl: null, thumbnailUrl: null, sourceInfo: null });
   }
@@ -164,7 +187,12 @@ export function GrenadeVideoEditor({ title, value, isProcessing, onChange, onBui
       zoomScale: "2",
       zoomOffsetX: "0",
       zoomOffsetY: "0",
-      sourceCropMode: "center-wide"
+      sourceCropMode: "center-wide",
+      hideSourceLogo: "true",
+      logoCoverX: "82",
+      logoCoverY: "2",
+      logoCoverWidth: "16",
+      logoCoverHeight: "8"
     });
   }
 
@@ -218,30 +246,38 @@ export function GrenadeVideoEditor({ title, value, isProcessing, onChange, onBui
   }
 
   async function buildVideo() {
-    if (!file) {
+    if (!files.length) {
       setLocalError("Выбери webm, mp4 или mov видео для адаптации.");
       return;
     }
     setLocalError(null);
     onChange({ notice: "", processedUrl: null, thumbnailUrl: null, sourceInfo: null });
     try {
-      await onBuild({
-        file,
-        title: title || file.name,
-        flightSeconds: value.flightSeconds,
-        aimFrameSeconds: value.aimFrameSeconds,
-        videoScale: value.videoScale,
-        videoOffsetX: value.videoOffsetX,
-        videoOffsetY: value.videoOffsetY,
-        introSeconds: value.introSeconds,
-        hideWatermark: value.hideWatermark,
-        zoomStartSeconds: value.zoomStartSeconds,
-        zoomEndSeconds: value.zoomEndSeconds,
-        zoomScale: value.zoomScale,
-        zoomOffsetX: value.zoomOffsetX,
-        zoomOffsetY: value.zoomOffsetY,
-        sourceCropMode
-      });
+      for (const [index, file] of files.entries()) {
+        onChange({ notice: files.length > 1 ? `Собираем видео ${index + 1} из ${files.length}: ${file.name}` : "" });
+        await onBuild({
+          file,
+          title: title || file.name,
+          flightSeconds: value.flightSeconds,
+          aimFrameSeconds: value.aimFrameSeconds,
+          videoScale: value.videoScale,
+          videoOffsetX: value.videoOffsetX,
+          videoOffsetY: value.videoOffsetY,
+          introSeconds: value.introSeconds,
+          hideWatermark: value.hideWatermark,
+          zoomStartSeconds: value.zoomStartSeconds,
+          zoomEndSeconds: value.zoomEndSeconds,
+          zoomScale: value.zoomScale,
+          zoomOffsetX: value.zoomOffsetX,
+          zoomOffsetY: value.zoomOffsetY,
+          sourceCropMode,
+          hideSourceLogo: value.hideSourceLogo,
+          logoCoverX: value.logoCoverX,
+          logoCoverY: value.logoCoverY,
+          logoCoverWidth: value.logoCoverWidth,
+          logoCoverHeight: value.logoCoverHeight
+        });
+      }
     } catch {
       // The parent mutation already turns API errors into the page-level alert.
     }
@@ -254,6 +290,7 @@ export function GrenadeVideoEditor({ title, value, isProcessing, onChange, onBui
         data-testid="grenade-video-upload"
         className="hidden"
         type="file"
+        multiple
         accept="video/webm,video/mp4,video/quicktime,.webm,.mp4,.mov"
         onChange={chooseFile}
       />
@@ -272,7 +309,8 @@ export function GrenadeVideoEditor({ title, value, isProcessing, onChange, onBui
         </div>
         <button className="btn btn-ghost h-10 shrink-0" type="button" onClick={() => inputRef.current?.click()}>
           <UploadCloud size={16} />
-          {file ? "Заменить видео" : "Загрузить видео"}
+          {files.length ? "Заменить видео" : "Загрузить видео"}
+          {files.length > 1 ? ` (${files.length})` : ""}
         </button>
       </div>
 
@@ -338,6 +376,17 @@ export function GrenadeVideoEditor({ title, value, isProcessing, onChange, onBui
                 <div className="mt-0.5 text-[8px] tracking-[0.22em] text-white/55">Clean overlay</div>
               </div>
             ) : null}
+            {hideSourceLogo && objectUrl ? (
+              <div
+                className="absolute z-30 rounded-md border border-focus/55 bg-black/85 shadow-lg shadow-black/40"
+                style={logoCoverStyle}
+                title="Зона скрытия чужого watermark"
+              >
+                <div className="grid h-full w-full place-items-center text-[7px] font-black uppercase tracking-[0.16em] text-focus/90">
+                  FullFocus
+                </div>
+              </div>
+            ) : null}
             <div className="pointer-events-none absolute left-1/2 top-1/2 z-20 h-12 w-12 -translate-x-1/2 -translate-y-1/2 rounded-full border border-focus/45 shadow-[0_0_18px_rgba(255,106,0,0.35)]">
               <span className="absolute left-1/2 top-2 h-8 w-px -translate-x-1/2 bg-focus/70" />
               <span className="absolute left-2 top-1/2 h-px w-8 -translate-y-1/2 bg-focus/70" />
@@ -373,8 +422,10 @@ export function GrenadeVideoEditor({ title, value, isProcessing, onChange, onBui
           <div className="rounded-lg border border-white/10 bg-black/20 p-3">
             <div className="mb-3">
               <div>
-                <div className="text-sm font-black text-zinc-100">{file?.name ?? "Видео ещё не выбрано"}</div>
-                <div className="text-xs text-zinc-500">{value.sourceInfo || "Сначала выбери видео, затем выставь тайминги и кадр прицеливания."}</div>
+                <div className="text-sm font-black text-zinc-100">{files[0]?.name ?? "Видео ещё не выбрано"}</div>
+                <div className="text-xs text-zinc-500">
+                  {files.length > 1 ? `Массовая загрузка: ${files.length} файлов с общими настройками.` : value.sourceInfo || "Сначала выбери видео, затем выставь тайминги и кадр прицеливания."}
+                </div>
               </div>
             </div>
 
@@ -471,11 +522,34 @@ export function GrenadeVideoEditor({ title, value, isProcessing, onChange, onBui
                 onChange={(event) => updateDraft({ hideWatermark: event.target.checked ? "true" : "false" })}
               />
             </label>
+            <label className="flex items-center justify-between gap-4 rounded-lg border border-white/10 bg-black/20 px-4 py-3">
+              <span>
+                <span className="block text-sm font-black text-zinc-100">Скрыть логотип источника справа сверху</span>
+                <span className="block text-xs leading-5 text-zinc-500">Эта зона применяется к gameplay-слою в preview и в итоговом MP4, чтобы закрыть csnades/чужой watermark.</span>
+              </span>
+              <input
+                className="h-5 w-5 accent-[#ff6a00]"
+                type="checkbox"
+                checked={hideSourceLogo}
+                onChange={(event) => updateDraft({ hideSourceLogo: event.target.checked ? "true" : "false" })}
+              />
+            </label>
+            {hideSourceLogo ? (
+              <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+                <div className="mb-3 text-xs font-black uppercase tracking-[0.18em] text-zinc-500">Зона скрытия логотипа, %</div>
+                <div className="space-y-3">
+                  <NumberControl label="Logo X" value={value.logoCoverX} min={0} max={100} step={1} onChange={(next) => updateDraft({ logoCoverX: next })} />
+                  <NumberControl label="Logo Y" value={value.logoCoverY} min={0} max={100} step={1} onChange={(next) => updateDraft({ logoCoverY: next })} />
+                  <NumberControl label="Logo W" value={value.logoCoverWidth} min={1} max={45} step={1} onChange={(next) => updateDraft({ logoCoverWidth: next })} />
+                  <NumberControl label="Logo H" value={value.logoCoverHeight} min={1} max={35} step={1} onChange={(next) => updateDraft({ logoCoverHeight: next })} />
+                </div>
+              </div>
+            ) : null}
           </div>
 
-          <button className="btn btn-primary h-12 w-full text-base" type="button" disabled={!file || isProcessing} onClick={buildVideo}>
+          <button className="btn btn-primary h-12 w-full text-base" type="button" disabled={!files.length || isProcessing} onClick={buildVideo}>
             {isProcessing ? <Loader2 size={18} className="animate-spin" /> : <Film size={18} />}
-            {isProcessing ? "Собираем MP4..." : "Собрать MP4 для Telegram"}
+            {isProcessing ? "Собираем MP4..." : files.length > 1 ? `Собрать ${files.length} MP4 для Telegram` : "Собрать MP4 для Telegram"}
           </button>
 
           {localError ? <StatusBox tone="error">{localError}</StatusBox> : null}

@@ -21,6 +21,11 @@ export const grenadeMediaItemSchema = z.object({
   zoomOffsetX: z.number().nullable().optional(),
   zoomOffsetY: z.number().nullable().optional(),
   sourceCropMode: z.enum(["none", "center-wide"]).nullable().optional(),
+  hideSourceLogo: z.boolean().nullable().optional(),
+  logoCoverX: z.number().nullable().optional(),
+  logoCoverY: z.number().nullable().optional(),
+  logoCoverWidth: z.number().nullable().optional(),
+  logoCoverHeight: z.number().nullable().optional(),
   adapted: z.boolean().optional()
 });
 
@@ -68,9 +73,26 @@ export interface CsMapSummary {
 }
 
 export type BotButtonStyle = "default" | "primary" | "success" | "danger";
+export type BotButtonKey =
+  | "stats"
+  | "compare"
+  | "grenades"
+  | "leaderboard"
+  | "settings"
+  | "profile"
+  | "favorites"
+  | "training"
+  | "search"
+  | "menu"
+  | "back"
+  | "backToMaps"
+  | "favorite"
+  | "bindFaceit"
+  | "otherPlayer"
+  | "myStats";
 
 export interface BotButtonConfig {
-  key: "stats" | "compare" | "grenades" | "leaderboard" | "settings" | "profile" | "favorites" | "training" | "search";
+  key: BotButtonKey;
   label: string;
   fallbackEmoji: string;
   premiumEmojiId: string | null;

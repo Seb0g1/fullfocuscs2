@@ -59,7 +59,12 @@ describe("GrenadeVideoService", () => {
       zoomScale: "2.2",
       zoomOffsetX: "60",
       zoomOffsetY: "-40",
-      sourceCropMode: "center-wide"
+      sourceCropMode: "center-wide",
+      hideSourceLogo: "true",
+      logoCoverX: "82",
+      logoCoverY: "2",
+      logoCoverWidth: "16",
+      logoCoverHeight: "8"
     });
 
     expect(result.mediaItem).toMatchObject({
@@ -79,6 +84,11 @@ describe("GrenadeVideoService", () => {
       zoomOffsetX: 60,
       zoomOffsetY: -40,
       sourceCropMode: "center-wide",
+      hideSourceLogo: true,
+      logoCoverX: 82,
+      logoCoverY: 2,
+      logoCoverWidth: 16,
+      logoCoverHeight: 8,
       adapted: true
     });
     expect(result.source).toMatchObject({ durationSeconds: 4.5, width: 1080, height: 1920 });
@@ -95,11 +105,17 @@ describe("GrenadeVideoService", () => {
       zoomScale: 2.2,
       zoomOffsetX: 60,
       zoomOffsetY: -40,
-      sourceCropMode: "center-wide"
+      sourceCropMode: "center-wide",
+      hideSourceLogo: true,
+      logoCoverX: 82,
+      logoCoverY: 2,
+      logoCoverWidth: 16,
+      logoCoverHeight: 8
     });
     expect(service.commands.map((item) => item.command)).toEqual(["ffprobe", "ffmpeg", "ffmpeg", "ffmpeg"]);
     expect(service.commands[2]?.args.join(" ")).toContain("scale=1350:-2");
     expect(service.commands[2]?.args.join(" ")).toContain("crop=iw:trunc(min(ih\\,iw*9/16)/2)*2");
+    expect(service.commands[2]?.args.join(" ")).toContain("drawbox=x=trunc(iw*0.82/2)*2");
     expect(service.commands[2]?.args.join(" ")).toContain("overlay=(W-w)/2+40:(H-h)/2-80");
     expect(service.commands[2]?.args.join(" ")).toContain("drawbox=x=w-314:y=h-920");
     expect(service.commands[3]?.args.join(" ")).toContain("trim=duration=1.6");
@@ -117,6 +133,7 @@ describe("GrenadeVideoService", () => {
       videoOffsetX: "1200",
       videoOffsetY: "-1200",
       hideWatermark: "false",
+      hideSourceLogo: "false",
       sourceCropMode: "none"
     });
 
@@ -124,6 +141,7 @@ describe("GrenadeVideoService", () => {
     expect(thumbnailArgs).toContain("scale=4860:-2");
     expect(thumbnailArgs).toContain("overlay=(W-w)/2+1200:(H-h)/2-1200");
     expect(thumbnailArgs).not.toContain("drawbox=x=w-314:y=h-920");
+    expect(thumbnailArgs).not.toContain("trunc(iw*0.82/2)*2");
   });
 
   it("rejects editor settings outside safe ranges", async () => {

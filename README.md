@@ -2,6 +2,8 @@
 
 FullFocus cs2 is a TypeScript monorepo for a Telegram bot, FACEIT CS2 stat cards, grenade lineup catalog, and a modern Russian-first web admin panel.
 
+The production MVP includes a FullFocus grenade video adapter, configurable bot buttons with premium emoji fallbacks, manual banner broadcasts, analytics, and bot user ID import for clean audience management.
+
 ## Stack
 
 - `apps/server`: NestJS + Fastify, Telegraf, Prisma, Redis, FACEIT/Steam clients.
@@ -34,6 +36,9 @@ The admin runs on `http://localhost:5030`, and the API/bot server runs on `http:
 - `JWT_SECRET`
 - `ADMIN_PUBLIC_URL`
 - `ADMIN_TELEGRAM_IDS`
+- `GRENADE_VIDEO_PRESET`
+- `GRENADE_VIDEO_CRF`
+- `GRENADE_VIDEO_THREADS`
 
 ## Docker
 
@@ -59,3 +64,10 @@ corepack pnpm smoke:admin
 ```
 
 `smoke:admin` starts the Next.js admin on `5030` with a mocked API and checks login, dashboard, grenade catalog, users and settings in Chromium. In CI, Chromium is installed with `pnpm exec playwright install --with-deps chromium`.
+
+## Admin Highlights
+
+- `Раскиды`: online 9:16 video editor, source-logo cover, batch MP4 render, editable grenade flight time, media catalog.
+- `Настройки`: welcome image upload, bot button constructor, premium emoji IDs with fallback emoji and Telegram-style preview.
+- `Рассылки`: banner/photo/video campaigns, test send to admin, manual launch, user ID base import.
+- `Аналитика`: active users, FACEIT/API events, popular grenade content, broadcast counters, bot health.

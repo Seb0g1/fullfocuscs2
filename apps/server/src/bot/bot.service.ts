@@ -12,9 +12,11 @@ import {
   buildCallbackButton,
   buildPlainCallbackButton,
   buildUrlButton,
+  normalizeBotButtons,
   normalizeMenuButtons,
   normalizePremiumEmojiCatalog,
   parseEmojiTokens,
+  type BotButtonKey,
   type BotButtonConfig,
   type BotButtonStyle,
   type ParsedEmojiText,
@@ -84,6 +86,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
 
     bot.action("menu", async (ctx) => {
       await ctx.answerCbQuery();
+      await this.trackBotEvent(ctx, "menu_click", { key: "menu" });
       await this.sendMenu(ctx);
     });
     bot.action("stats", async (ctx) => {
@@ -247,7 +250,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       "Привяжи FACEIT ник один раз, и дальше кнопка «Статистика» будет сразу показывать твою карточку.\n\nВведи ник, FACEIT URL или Steam-профиль.",
       Markup.inlineKeyboard([
         [await this.button("Показать другого игрока", "stats:other", { fallbackEmoji: "🔎", style: "primary" })],
-        [await this.button("Меню", "menu", { fallbackEmoji: "⌂" })]
+        [await this.actionButton("menu", "Меню", "menu")]
       ] as never)
     );
   }
@@ -282,7 +285,9 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
           ...(await this.afterStatsKeyboard(payload.player.nickname, options.bind))
         }
       );
+      await this.trackBotEvent(ctx, "stats_success", { nickname: payload.player.nickname, elo: payload.player.elo, bound: options.bind });
     } catch (error) {
+      await this.trackBotEvent(ctx, "stats_error", { query, error: this.toUserError(error) });
       await ctx.reply(this.toUserError(error), await this.menuKeyboard());
     }
   }
@@ -306,7 +311,9 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
           ...(await this.menuKeyboard())
         }
       );
+      await this.trackBotEvent(ctx, "compare_success", { left: payload.left.player.nickname, right: payload.right.player.nickname });
     } catch (error) {
+      await this.trackBotEvent(ctx, "compare_error", { query, error: this.toUserError(error) });
       await ctx.reply(this.toUserError(error), await this.menuKeyboard());
     }
   }
@@ -339,14 +346,14 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     ].filter(Boolean).join("\n");
 
     const rows: TelegramButtonLike[][] = [
-      [await this.button(user?.boundFaceitNickname ? "Сменить FACEIT" : "Привязать FACEIT", "settings:bind", { fallbackEmoji: "🔗", style: "primary" })],
+      [await this.actionButton("bindFaceit", user?.boundFaceitNickname ? "Сменить FACEIT" : "Привязать FACEIT", "settings:bind")],
       ...(user?.boundFaceitNickname
         ? [
-            [await this.button("Моя статистика", "stats:mine", { fallbackEmoji: "📈", style: "primary" })],
+            [await this.actionButton("myStats", "Моя статистика", "stats:mine")],
             [await this.button("Сбросить привязку", "settings:clear_bind", { fallbackEmoji: "🧹", style: "danger" })]
           ]
         : []),
-      [await this.button("Меню", "menu", { fallbackEmoji: "⌂" })]
+      [await this.actionButton("menu", "Меню", "menu")]
     ];
 
     await ctx.reply(text, Markup.inlineKeyboard(rows as never));
@@ -368,7 +375,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     await ctx.reply(
       text,
       Markup.inlineKeyboard([
-        [await this.button("Моя статистика", "stats:mine", { fallbackEmoji: "📈", style: "primary" })],
+        [await this.actionButton("myStats", "Моя статистика", "stats:mine")],
         [
           await this.button("Избранное", "favorites", { fallbackEmoji: "⭐" }),
           await this.button("Тренировка", "training", { fallbackEmoji: "🧠" })
@@ -377,7 +384,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
           await this.button("Раскиды", "grenades", { fallbackEmoji: "💣", style: "success" }),
           await this.button("Настройки", "settings", { fallbackEmoji: "⚙️" })
         ],
-        [await this.button("Меню", "menu", { fallbackEmoji: "⌂" })]
+        [await this.actionButton("menu", "Меню", "menu")]
       ] as never)
     );
   }
@@ -399,7 +406,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
           favorites.slice(0, 18).map((lineup) => this.lineupSelectButton(lineup)),
           1
         ),
-        [await this.button("Меню", "menu", { fallbackEmoji: "⌂" })]
+        [await this.actionButton("menu", "Меню", "menu")]
       ] as never)
     );
   }
@@ -411,6 +418,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     await this.touchBotUser(ctx);
     try {
       const result = await this.grenades.toggleFavorite(String(ctx.from.id), lineupId);
+      await this.trackBotEvent(ctx, "favorite_toggle", { lineupId, favorited: result.favorited });
       await ctx.reply(result.favorited ? "⭐ Добавлено в избранное." : "Убрано из избранного.", await this.lineupKeyboardById(lineupId));
     } catch (error) {
       await ctx.reply(this.toUserError(error), await this.menuKeyboard());
@@ -427,7 +435,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       "🧠 Выбери карту для тренировки. Я соберу короткий сет из 3-5 раскидов.",
       Markup.inlineKeyboard([
         ...chunkButtons(maps.map((map) => this.mapButton(map, `tr:m:${map.slug}`)), 2),
-        [await this.button("Меню", "menu", { fallbackEmoji: "⌂" })]
+        [await this.actionButton("menu", "Меню", "menu")]
       ] as never)
     );
   }
@@ -442,8 +450,8 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       "Выбери сторону:",
       Markup.inlineKeyboard([
         sides.map((side) => this.simpleButton(sideLabel(side), `tr:s:${mapSlug}:${side}`, { style: "primary" })),
-        [await this.button("К выбору карты", "training", { fallbackEmoji: "⬅️" })],
-        [await this.button("Меню", "menu", { fallbackEmoji: "⌂" })]
+        [await this.actionButton("backToMaps", "К выбору карты", "training")],
+        [await this.actionButton("menu", "Меню", "menu")]
       ] as never)
     );
   }
@@ -458,13 +466,14 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       `🧠 Тренировка: ${lineups[0].mapName} · ${sideLabel(side)}\n\nПроходи по списку сверху вниз. После каждого раскида возвращайся сюда или открой следующий.`,
       Markup.inlineKeyboard([
         ...lineups.map((lineup, index) => [this.simpleButton(`${index + 1}. ${lineupButtonLabel(lineup)}`, buildGrenadeCallback({ kind: "position", lineupId: lineup.id }), { style: "success" })]),
-        [await this.button("Повторить выбор", "training", { fallbackEmoji: "🔁" }), await this.button("Меню", "menu", { fallbackEmoji: "⌂" })]
+        [await this.button("Повторить выбор", "training", { fallbackEmoji: "🔁" }), await this.actionButton("menu", "Меню", "menu")]
       ] as never)
     );
   }
 
   private async handleLineupSearch(ctx: Context, query: string) {
     this.setState(ctx, { mode: "idle" });
+    await this.trackBotEvent(ctx, "search", { query });
     const lineups = await this.grenades.searchPublishedLineups(query);
     if (!lineups.length) {
       await ctx.reply("Ничего не нашёл. Попробуй проще: карта + тип + позиция, например `mirage smoke window`.", await this.menuKeyboard());
@@ -474,7 +483,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       `🔎 Нашёл раскиды по запросу: ${query}`,
       Markup.inlineKeyboard([
         ...lineups.map((lineup) => [this.lineupSelectButton(lineup)]),
-        [await this.button("Новый поиск", "search", { fallbackEmoji: "🔎" }), await this.button("Меню", "menu", { fallbackEmoji: "⌂" })]
+        [await this.button("Новый поиск", "search", { fallbackEmoji: "🔎" }), await this.actionButton("menu", "Меню", "menu")]
       ] as never)
     );
   }
@@ -489,7 +498,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       "На какой карте нужен раскид?",
       Markup.inlineKeyboard([
         ...chunkButtons(maps.map((map) => this.mapButton(map, buildGrenadeCallback({ kind: "map", mapSlug: map.slug }))), 2),
-        [await this.button("Главное меню", "menu", { fallbackEmoji: "⌂" })]
+        [await this.actionButton("menu", "Главное меню", "menu")]
       ] as never)
     );
   }
@@ -505,7 +514,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     const keyboard = Markup.inlineKeyboard([
       sides.map((side) => this.simpleButton(sideLabel(side), buildGrenadeCallback({ kind: "side", mapSlug, side }), { style: "primary" })),
       [await this.button("Назад к выбору карт", "grenades", { fallbackEmoji: "⬅️" })],
-      [await this.button("Главное меню", "menu", { fallbackEmoji: "⌂" })]
+      [await this.actionButton("menu", "Главное меню", "menu")]
     ] as never);
     const text = `Карта: ${map.emoji ? `${map.emoji} ` : ""}${map.name}\nВыбери сторону.`;
     if (map.overviewImageUrl) {
@@ -532,7 +541,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
           3
         ),
         [this.simpleButton("Назад", buildGrenadeCallback({ kind: "map", mapSlug }))],
-        [await this.button("Главное меню", "menu", { fallbackEmoji: "⌂" })]
+        [await this.actionButton("menu", "Главное меню", "menu")]
       ] as never)
     );
   }
@@ -555,7 +564,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       Markup.inlineKeyboard([
         ...chunkButtons(buttons, 3),
         [this.simpleButton("Назад", buildGrenadeCallback({ kind: "side", mapSlug, side: normalizeSide(side) }))],
-        [await this.button("Главное меню", "menu", { fallbackEmoji: "⌂" })]
+        [await this.actionButton("menu", "Главное меню", "menu")]
       ] as never)
     );
   }
@@ -578,7 +587,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       Markup.inlineKeyboard([
         ...chunkButtons(lineups.slice(0, 24).map((lineup) => this.lineupSelectButton(lineup)), 2),
         [this.simpleButton("Назад", buildGrenadeCallback({ kind: "area", mapSlug, side: normalizeSide(side), areaSlug }))],
-        [await this.button("К выбору карты", "grenades", { fallbackEmoji: "⬅️" })]
+        [await this.actionButton("backToMaps", "К выбору карты", "grenades")]
       ] as never)
     );
   }
@@ -589,6 +598,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       await ctx.reply("Раскид не найден или снят с публикации.", await this.menuKeyboard());
       return;
     }
+    await this.trackBotEvent(ctx, "lineup_sent", { lineupId: lineup.id, mapSlug: lineup.mapSlug, grenadeType: lineup.grenadeType, side: lineup.side });
 
     const mediaItems = lineup.mediaItems.length
       ? lineup.mediaItems
@@ -654,7 +664,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async menuKeyboard() {
-    const buttons = await this.getMenuButtons();
+    const buttons = await this.getBotButtons();
     const byKey = new Map(buttons.filter((button) => button.enabled).map((button) => [button.key, button]));
     const rows: TelegramButtonLike[][] = [
       ["stats", "compare"].flatMap((key) => this.configuredButton(byKey, key)),
@@ -667,13 +677,13 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async backToMenuKeyboard() {
-    return Markup.inlineKeyboard([[await this.button("Меню", "menu", { fallbackEmoji: "⌂" })]] as never);
+    return Markup.inlineKeyboard([[await this.actionButton("menu", "Меню", "menu")]] as never);
   }
 
   private async grenadeBackToMapsKeyboard() {
     return Markup.inlineKeyboard([
-      [await this.button("К выбору карты", "grenades", { fallbackEmoji: "⬅️" })],
-      [await this.button("Главное меню", "menu", { fallbackEmoji: "⌂" })]
+      [await this.actionButton("backToMaps", "К выбору карты", "grenades")],
+      [await this.actionButton("menu", "Главное меню", "menu")]
     ] as never);
   }
 
@@ -681,16 +691,16 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     return Markup.inlineKeyboard([
       [buildUrlButton("Открыть FACEIT", `https://www.faceit.com/ru/players/${encodeURIComponent(nickname)}`, "↗️", null, "primary")],
       [
-        await this.button("Другой игрок", "stats:other", { fallbackEmoji: "🔎", style: "primary" }),
-        await this.button(bound ? "Сменить ник" : "Привязать ник", "stats:bind", { fallbackEmoji: "🔗" })
+        await this.actionButton("otherPlayer", "Другой игрок", "stats:other"),
+        await this.actionButton("bindFaceit", bound ? "Сменить ник" : "Привязать ник", "stats:bind")
       ],
-      [await this.button("Меню", "menu", { fallbackEmoji: "⌂" })]
+      [await this.actionButton("menu", "Меню", "menu")]
     ] as never);
   }
 
   private async lineupKeyboard(lineup: LineupKeyboardSource) {
     const rows: TelegramButtonLike[][] = [
-      lineup.id ? [await this.button("В избранное", `fav:${lineup.id}`, { fallbackEmoji: "⭐", style: "success" })] : [],
+      lineup.id ? [await this.actionButton("favorite", "В избранное", `fav:${lineup.id}`)] : [],
       [
         buildPlainCallbackButton(
           "Назад к позициям",
@@ -705,8 +715,8 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
         )
       ],
       [
-        await this.button("К выбору карты", "grenades", { fallbackEmoji: "🗺" }),
-        await this.button("Меню", "menu", { fallbackEmoji: "⌂" })
+        await this.actionButton("backToMaps", "К выбору карты", "grenades"),
+        await this.actionButton("menu", "Меню", "menu")
       ]
     ].filter((row) => row.length);
     return Markup.inlineKeyboard(rows as never);
@@ -721,6 +731,15 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async button(label: string, callbackData: string, options: { fallbackEmoji?: string; premiumEmojiId?: string | null; style?: BotButtonStyle } = {}) {
+    return buildPlainCallbackButton(label, callbackData, options);
+  }
+
+  private async actionButton(key: BotButtonKey, label: string, callbackData: string, options: { fallbackEmoji?: string; premiumEmojiId?: string | null; style?: BotButtonStyle } = {}) {
+    const buttons = await this.getBotButtons();
+    const config = buttons.find((button) => button.key === key && button.enabled);
+    if (config) {
+      return buildCallbackButton({ ...config, label: label || config.label }, callbackData);
+    }
     return buildPlainCallbackButton(label, callbackData, options);
   }
 
@@ -750,9 +769,27 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     return normalizeMenuButtons(setting?.value);
   }
 
+  private async getBotButtons(): Promise<BotButtonConfig[]> {
+    const [botButtons, menuButtons] = await Promise.all([
+      this.prisma.botSetting.findUnique({ where: { key: "botButtons" } }).catch(() => null),
+      this.prisma.botSetting.findUnique({ where: { key: "menuButtons" } }).catch(() => null)
+    ]);
+    return normalizeBotButtons(botButtons?.value, menuButtons?.value);
+  }
+
   private async getPremiumEmojiCatalog(): Promise<PremiumEmojiConfig[]> {
     const setting = await this.prisma.botSetting.findUnique({ where: { key: "premiumEmojiCatalog" } }).catch(() => null);
     return normalizePremiumEmojiCatalog(setting?.value);
+  }
+
+  private async trackBotEvent(ctx: Context, type: string, metadata: Record<string, unknown> = {}) {
+    await this.prisma.botEvent.create({
+      data: {
+        type,
+        telegramId: ctx.from?.id ? String(ctx.from.id) : null,
+        metadata: metadata as never
+      }
+    }).catch(() => null);
   }
 
   private async parseCaption(text: string): Promise<ParsedEmojiText> {

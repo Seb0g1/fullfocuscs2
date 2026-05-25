@@ -43,6 +43,11 @@ interface MediaItem {
   zoomOffsetX?: number | null;
   zoomOffsetY?: number | null;
   sourceCropMode?: "none" | "center-wide" | null;
+  hideSourceLogo?: boolean | null;
+  logoCoverX?: number | null;
+  logoCoverY?: number | null;
+  logoCoverWidth?: number | null;
+  logoCoverHeight?: number | null;
   adapted?: boolean;
 }
 
@@ -67,6 +72,11 @@ interface ProcessedVideoResponse {
     zoomOffsetX: number;
     zoomOffsetY: number;
     sourceCropMode: "none" | "center-wide";
+    hideSourceLogo: boolean;
+    logoCoverX: number;
+    logoCoverY: number;
+    logoCoverWidth: number;
+    logoCoverHeight: number;
   };
 }
 
@@ -205,6 +215,11 @@ function Grenades() {
     zoomOffsetX: "0",
     zoomOffsetY: "0",
     sourceCropMode: "center-wide",
+    hideSourceLogo: "true",
+    logoCoverX: "82",
+    logoCoverY: "2",
+    logoCoverWidth: "16",
+    logoCoverHeight: "8",
     notice: "",
     processedUrl: null,
     thumbnailUrl: null,
@@ -291,6 +306,11 @@ function Grenades() {
       body.append("zoomOffsetX", payload.zoomOffsetX);
       body.append("zoomOffsetY", payload.zoomOffsetY);
       body.append("sourceCropMode", payload.sourceCropMode);
+      body.append("hideSourceLogo", payload.hideSourceLogo);
+      body.append("logoCoverX", payload.logoCoverX);
+      body.append("logoCoverY", payload.logoCoverY);
+      body.append("logoCoverWidth", payload.logoCoverWidth);
+      body.append("logoCoverHeight", payload.logoCoverHeight);
       body.append("title", payload.title || payload.file.name);
       return api<ProcessedVideoResponse>("/admin/media/grenade-video", { method: "POST", body });
     },
@@ -406,6 +426,7 @@ function Grenades() {
   function updateMediaItem(index: number, patch: Partial<MediaItem>) {
     setForm((current) => ({
       ...current,
+      description: patch.flightSeconds !== undefined ? replaceFlightTime(current.description, patch.flightSeconds) : current.description,
       mediaItems: current.mediaItems.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item))
     }));
   }
@@ -766,6 +787,23 @@ function MediaEditor({
                   onChange={(event) => onUpdate(index, { caption: event.target.value || null })}
                 />
               </div>
+              {item.type === "video" || item.adapted || item.flightSeconds ? (
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <label className="block text-xs font-bold uppercase tracking-[0.12em] text-zinc-500">
+                    Время полёта, сек
+                    <input
+                      className="field mt-2"
+                      inputMode="decimal"
+                      placeholder="2.0"
+                      value={item.flightSeconds ?? ""}
+                      onChange={(event) => onUpdate(index, { flightSeconds: parseNullableNumber(event.target.value) })}
+                    />
+                  </label>
+                  <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-xs leading-5 text-zinc-500">
+                    Можно менять после рендера. Обновится описание и подпись в боте, MP4 пересобирать не нужно.
+                  </div>
+                </div>
+              ) : null}
             </div>
           ))}
         </div>
@@ -824,6 +862,11 @@ function normalizeFormMediaItems(items: MediaItem[], title: string): MediaItem[]
       zoomOffsetX: typeof item.zoomOffsetX === "number" ? item.zoomOffsetX : null,
       zoomOffsetY: typeof item.zoomOffsetY === "number" ? item.zoomOffsetY : null,
       sourceCropMode: item.sourceCropMode === "center-wide" || item.sourceCropMode === "none" ? item.sourceCropMode : null,
+      hideSourceLogo: typeof item.hideSourceLogo === "boolean" ? item.hideSourceLogo : null,
+      logoCoverX: typeof item.logoCoverX === "number" ? item.logoCoverX : null,
+      logoCoverY: typeof item.logoCoverY === "number" ? item.logoCoverY : null,
+      logoCoverWidth: typeof item.logoCoverWidth === "number" ? item.logoCoverWidth : null,
+      logoCoverHeight: typeof item.logoCoverHeight === "number" ? item.logoCoverHeight : null,
       adapted: item.adapted === true
     }))
     .filter((item) => item.url);
@@ -842,6 +885,22 @@ function appendFlightTime(description: string, flightSeconds: number | null | un
   }
   const line = `⏱ Время полёта: ${formatSeconds(flightSeconds)} сек.`;
   return [description.trim(), line].filter(Boolean).join("\n");
+}
+
+function replaceFlightTime(description: string, flightSeconds: number | null | undefined): string {
+  const cleaned = description
+    .split("\n")
+    .filter((line) => !/время\s+пол[её]та/i.test(line))
+    .join("\n")
+    .trim();
+  return appendFlightTime(cleaned, flightSeconds);
+}
+
+function parseNullableNumber(value: string): number | null {
+  const normalized = value.trim().replace(",", ".");
+  if (!normalized) return null;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function formatSeconds(value: number): string {

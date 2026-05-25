@@ -1,6 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { CS2_MAPS } from "@fullfocus/shared";
-import { DEFAULT_MENU_BUTTONS, DEFAULT_PREMIUM_EMOJI_CATALOG } from "../src/bot/bot-ui";
+import { DEFAULT_BOT_BUTTONS, DEFAULT_MENU_BUTTONS, DEFAULT_PREMIUM_EMOJI_CATALOG } from "../src/bot/bot-ui";
 
 const prisma = new PrismaClient();
 
@@ -49,6 +49,15 @@ async function main() {
     create: {
       key: "menuButtons",
       value: DEFAULT_MENU_BUTTONS
+    }
+  });
+
+  await prisma.botSetting.upsert({
+    where: { key: "botButtons" },
+    update: {},
+    create: {
+      key: "botButtons",
+      value: DEFAULT_BOT_BUTTONS
     }
   });
 

@@ -132,7 +132,12 @@ export class GrenadesController {
       zoomScale: fields.zoomScale,
       zoomOffsetX: fields.zoomOffsetX,
       zoomOffsetY: fields.zoomOffsetY,
-      sourceCropMode: fields.sourceCropMode
+      sourceCropMode: fields.sourceCropMode,
+      hideSourceLogo: fields.hideSourceLogo,
+      logoCoverX: fields.logoCoverX,
+      logoCoverY: fields.logoCoverY,
+      logoCoverWidth: fields.logoCoverWidth,
+      logoCoverHeight: fields.logoCoverHeight
     });
   }
 }

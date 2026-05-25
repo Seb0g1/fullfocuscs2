@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import clsx from "clsx";
-import { BarChart3, Bomb, LogOut, Menu, Settings, Shield, Users, X } from "lucide-react";
+import { BarChart3, Bomb, LogOut, Megaphone, Menu, Settings, Shield, TrendingUp, Users, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
@@ -11,6 +11,8 @@ import { api } from "@/lib/api";
 const nav = [
   { href: "/", label: "Обзор", icon: BarChart3 },
   { href: "/grenades", label: "Раскиды", icon: Bomb },
+  { href: "/broadcasts", label: "Рассылки", icon: Megaphone },
+  { href: "/analytics", label: "Аналитика", icon: TrendingUp },
   { href: "/users", label: "Админы", icon: Users },
   { href: "/settings", label: "Настройки", icon: Settings }
 ];
@@ -25,7 +27,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const me = useQuery({ queryKey: ["me"], queryFn: () => api<Me>("/admin/auth/me"), retry: false });
   const visibleNav = nav.filter((item) => {
-    if (item.href === "/users" || item.href === "/settings") {
+    if (item.href === "/users" || item.href === "/settings" || item.href === "/broadcasts" || item.href === "/analytics") {
       return me.data?.role === "owner" || me.data?.role === "admin";
     }
     return true;

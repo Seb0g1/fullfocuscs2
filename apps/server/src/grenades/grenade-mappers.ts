@@ -118,6 +118,11 @@ export function normalizeMediaItems(value: Prisma.JsonValue | null, fallback?: G
         zoomOffsetX: numberOrNull(record.zoomOffsetX),
         zoomOffsetY: numberOrNull(record.zoomOffsetY),
         sourceCropMode: cropModeOrNull(record.sourceCropMode),
+        hideSourceLogo: booleanOrNull(record.hideSourceLogo),
+        logoCoverX: numberOrNull(record.logoCoverX),
+        logoCoverY: numberOrNull(record.logoCoverY),
+        logoCoverWidth: numberOrNull(record.logoCoverWidth),
+        logoCoverHeight: numberOrNull(record.logoCoverHeight),
         adapted: record.adapted === true
       }];
     });
@@ -141,6 +146,10 @@ function numberOrNull(value: unknown): number | null {
 
 function cropModeOrNull(value: unknown): "none" | "center-wide" | null {
   return value === "none" || value === "center-wide" ? value : null;
+}
+
+function booleanOrNull(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null;
 }
 
 export function slugify(value: string): string {

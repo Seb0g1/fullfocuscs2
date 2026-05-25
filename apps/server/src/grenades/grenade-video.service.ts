@@ -49,6 +49,11 @@ export interface GrenadeVideoInput {
   zoomOffsetX?: unknown;
   zoomOffsetY?: unknown;
   sourceCropMode?: unknown;
+  hideSourceLogo?: unknown;
+  logoCoverX?: unknown;
+  logoCoverY?: unknown;
+  logoCoverWidth?: unknown;
+  logoCoverHeight?: unknown;
 }
 
 interface GrenadeVideoEditorSettings {
@@ -65,6 +70,11 @@ interface GrenadeVideoEditorSettings {
   zoomOffsetX: number;
   zoomOffsetY: number;
   sourceCropMode: "none" | "center-wide";
+  hideSourceLogo: boolean;
+  logoCoverX: number;
+  logoCoverY: number;
+  logoCoverWidth: number;
+  logoCoverHeight: number;
 }
 
 export interface GrenadeVideoOutput {
@@ -130,9 +140,10 @@ export class GrenadeVideoService {
       const zoomOverlay = overlayPosition(editor.zoomOffsetX, editor.zoomOffsetY);
       const watermark = watermarkFilter(editor.hideWatermark);
       const sourceCrop = sourceCropFilter(editor.sourceCropMode);
+      const sourcePrep = `${sourceCrop}${sourceLogoCoverFilter(editor)}`;
       const mainClipFilter = hasZoomSegment
-        ? `[2:v]${sourceCrop}split=2[clipSrc][zoomSrc];[clipSrc]scale=${videoWidth}:-2,setsar=1[clip];[zoomSrc]scale=${zoomVideoWidth}:-2,setsar=1[zoom];[bg][clip]overlay=${overlay}:shortest=1[base];[base][zoom]overlay=${zoomOverlay}:enable='between(t,${editor.zoomStartSeconds},${editor.zoomEndSeconds})':shortest=1${watermark},format=yuv420p,setpts=PTS-STARTPTS[main]`
-        : `[2:v]${sourceCrop}scale=${videoWidth}:-2,setsar=1[clip];[bg][clip]overlay=${overlay}:shortest=1${watermark},format=yuv420p,setpts=PTS-STARTPTS[main]`;
+        ? `[2:v]${sourcePrep}split=2[clipSrc][zoomSrc];[clipSrc]scale=${videoWidth}:-2,setsar=1[clip];[zoomSrc]scale=${zoomVideoWidth}:-2,setsar=1[zoom];[bg][clip]overlay=${overlay}:shortest=1[base];[base][zoom]overlay=${zoomOverlay}:enable='between(t,${editor.zoomStartSeconds},${editor.zoomEndSeconds})':shortest=1${watermark},format=yuv420p,setpts=PTS-STARTPTS[main]`
+        : `[2:v]${sourcePrep}scale=${videoWidth}:-2,setsar=1[clip];[bg][clip]overlay=${overlay}:shortest=1${watermark},format=yuv420p,setpts=PTS-STARTPTS[main]`;
       await this.runFfmpeg([
         "-y",
         "-ss",
@@ -155,7 +166,7 @@ export class GrenadeVideoService {
         "-i",
         aimFramePath,
         "-filter_complex",
-        `[0:v]scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=increase,crop=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT},setsar=1[bg];[1:v]${sourceCrop}scale=${videoWidth}:-2,setsar=1[aim];[bg][aim]overlay=${overlay}${watermark},format=yuv420p[v]`,
+        `[0:v]scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=increase,crop=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT},setsar=1[bg];[1:v]${sourcePrep}scale=${videoWidth}:-2,setsar=1[aim];[bg][aim]overlay=${overlay}${watermark},format=yuv420p[v]`,
         "-map",
         "[v]",
         "-frames:v",
@@ -189,9 +200,11 @@ export class GrenadeVideoService {
         "-c:v",
         "libx264",
         "-preset",
-        "veryfast",
+        this.videoPreset(),
         "-crf",
-        "23",
+        this.videoCrf(),
+        "-threads",
+        this.videoThreads(),
         "-pix_fmt",
         "yuv420p",
         "-movflags",
@@ -219,6 +232,11 @@ export class GrenadeVideoService {
           zoomOffsetX: editor.zoomOffsetX,
           zoomOffsetY: editor.zoomOffsetY,
           sourceCropMode: editor.sourceCropMode,
+          hideSourceLogo: editor.hideSourceLogo,
+          logoCoverX: editor.logoCoverX,
+          logoCoverY: editor.logoCoverY,
+          logoCoverWidth: editor.logoCoverWidth,
+          logoCoverHeight: editor.logoCoverHeight,
           adapted: true
         },
         source,
@@ -317,6 +335,24 @@ export class GrenadeVideoService {
     const publicBase = this.config.get<string>("ADMIN_PUBLIC_URL")?.replace(/\/$/, "");
     return publicBase ? `${publicBase}/media/${filename}` : `/media/${filename}`;
   }
+
+  private videoPreset(): string {
+    const preset = this.config.get<string>("GRENADE_VIDEO_PRESET") ?? "superfast";
+    const allowed = new Set(["ultrafast", "superfast", "veryfast", "faster", "fast", "medium"]);
+    return allowed.has(preset) ? preset : "superfast";
+  }
+
+  private videoCrf(): string {
+    const value = Number(this.config.get<string>("GRENADE_VIDEO_CRF") ?? 24);
+    if (!Number.isFinite(value)) return "24";
+    return String(Math.min(32, Math.max(18, Math.round(value))));
+  }
+
+  private videoThreads(): string {
+    const value = Number(this.config.get<string>("GRENADE_VIDEO_THREADS") ?? 0);
+    if (!Number.isFinite(value)) return "0";
+    return String(Math.min(32, Math.max(0, Math.round(value))));
+  }
 }
 
 function parseSeconds(value: unknown, message: string, allowZero: boolean): number {
@@ -341,7 +377,12 @@ function normalizeEditorSettings(input: GrenadeVideoInput): GrenadeVideoEditorSe
     zoomScale: parseRange(input.zoomScale, 2, 1, MAX_VIDEO_SCALE, "Zoom прицела должен быть от 1 до 4.5"),
     zoomOffsetX: parseRange(input.zoomOffsetX, 0, -MAX_VIDEO_OFFSET, MAX_VIDEO_OFFSET, "Сдвиг zoom X должен быть от -1200 до 1200"),
     zoomOffsetY: parseRange(input.zoomOffsetY, 0, -MAX_VIDEO_OFFSET, MAX_VIDEO_OFFSET, "Сдвиг zoom Y должен быть от -1200 до 1200"),
-    sourceCropMode: parseSourceCropMode(input.sourceCropMode)
+    sourceCropMode: parseSourceCropMode(input.sourceCropMode),
+    hideSourceLogo: parseBoolean(input.hideSourceLogo, true),
+    logoCoverX: parseRange(input.logoCoverX, 82, 0, 100, "Logo X должен быть от 0 до 100"),
+    logoCoverY: parseRange(input.logoCoverY, 2, 0, 100, "Logo Y должен быть от 0 до 100"),
+    logoCoverWidth: parseRange(input.logoCoverWidth, 16, 1, 45, "Logo W должен быть от 1 до 45"),
+    logoCoverHeight: parseRange(input.logoCoverHeight, 8, 1, 35, "Logo H должен быть от 1 до 35")
   };
 }
 
@@ -376,6 +417,17 @@ function sourceCropFilter(mode: "none" | "center-wide"): string {
     return "";
   }
   return "crop=iw:trunc(min(ih\\,iw*9/16)/2)*2:0:(ih-trunc(min(ih\\,iw*9/16)/2)*2)/2,";
+}
+
+function sourceLogoCoverFilter(editor: GrenadeVideoEditorSettings): string {
+  if (!editor.hideSourceLogo) {
+    return "";
+  }
+  const x = round(editor.logoCoverX / 100);
+  const y = round(editor.logoCoverY / 100);
+  const width = round(editor.logoCoverWidth / 100);
+  const height = round(editor.logoCoverHeight / 100);
+  return `drawbox=x=trunc(iw*${x}/2)*2:y=trunc(ih*${y}/2)*2:w=trunc(iw*${width}/2)*2:h=trunc(ih*${height}/2)*2:color=black@0.88:t=fill,drawbox=x=trunc(iw*${x}/2)*2:y=trunc(ih*${y}/2)*2:w=trunc(iw*${width}/2)*2:h=trunc(ih*${height}/2)*2:color=0xff6a00@0.45:t=2,`;
 }
 
 function signedOffset(value: number): string {

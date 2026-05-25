@@ -1,7 +1,24 @@
 export type BotButtonStyle = "default" | "primary" | "success" | "danger";
+export type BotButtonKey =
+  | "stats"
+  | "compare"
+  | "grenades"
+  | "leaderboard"
+  | "settings"
+  | "profile"
+  | "favorites"
+  | "training"
+  | "search"
+  | "menu"
+  | "back"
+  | "backToMaps"
+  | "favorite"
+  | "bindFaceit"
+  | "otherPlayer"
+  | "myStats";
 
 export interface BotButtonConfig {
-  key: "stats" | "compare" | "grenades" | "leaderboard" | "settings" | "profile" | "favorites" | "training" | "search";
+  key: BotButtonKey;
   label: string;
   fallbackEmoji: string;
   premiumEmojiId: string | null;
@@ -29,7 +46,9 @@ export interface ParsedEmojiText {
   entities: Array<{ type: "custom_emoji"; offset: number; length: number; custom_emoji_id: string }>;
 }
 
-export const DEFAULT_MENU_BUTTONS: BotButtonConfig[] = [
+export const MAIN_MENU_BUTTON_KEYS: BotButtonKey[] = ["stats", "compare", "grenades", "leaderboard", "profile", "favorites", "training", "search", "settings"];
+
+export const DEFAULT_BOT_BUTTONS: BotButtonConfig[] = [
   { key: "stats", label: "Статистика", fallbackEmoji: "📈", premiumEmojiId: null, style: "primary", enabled: true },
   { key: "compare", label: "Сравнить", fallbackEmoji: "⚔️", premiumEmojiId: null, style: "primary", enabled: true },
   { key: "grenades", label: "Раскид гранат", fallbackEmoji: "💣", premiumEmojiId: null, style: "success", enabled: true },
@@ -38,8 +57,17 @@ export const DEFAULT_MENU_BUTTONS: BotButtonConfig[] = [
   { key: "favorites", label: "Избранное", fallbackEmoji: "⭐", premiumEmojiId: null, style: "default", enabled: true },
   { key: "training", label: "Тренировка", fallbackEmoji: "🧠", premiumEmojiId: null, style: "default", enabled: true },
   { key: "search", label: "Поиск", fallbackEmoji: "🔎", premiumEmojiId: null, style: "default", enabled: true },
-  { key: "settings", label: "Настройки", fallbackEmoji: "⚙️", premiumEmojiId: null, style: "primary", enabled: true }
+  { key: "settings", label: "Настройки", fallbackEmoji: "⚙️", premiumEmojiId: null, style: "primary", enabled: true },
+  { key: "menu", label: "Меню", fallbackEmoji: "🏠", premiumEmojiId: null, style: "primary", enabled: true },
+  { key: "back", label: "Назад", fallbackEmoji: "⬅️", premiumEmojiId: null, style: "default", enabled: true },
+  { key: "backToMaps", label: "К выбору карты", fallbackEmoji: "🗺️", premiumEmojiId: null, style: "primary", enabled: true },
+  { key: "favorite", label: "В избранное", fallbackEmoji: "⭐", premiumEmojiId: null, style: "success", enabled: true },
+  { key: "bindFaceit", label: "Привязать FACEIT", fallbackEmoji: "🔗", premiumEmojiId: null, style: "primary", enabled: true },
+  { key: "otherPlayer", label: "Другой игрок", fallbackEmoji: "👤", premiumEmojiId: null, style: "default", enabled: true },
+  { key: "myStats", label: "Моя статистика", fallbackEmoji: "📈", premiumEmojiId: null, style: "success", enabled: true }
 ];
+
+export const DEFAULT_MENU_BUTTONS: BotButtonConfig[] = DEFAULT_BOT_BUTTONS.filter((button) => MAIN_MENU_BUTTON_KEYS.includes(button.key));
 
 export const DEFAULT_PREMIUM_EMOJI_CATALOG: PremiumEmojiConfig[] = [
   { key: "smoke", title: "Смок", fallbackEmoji: "💨", customEmojiId: "" },
@@ -51,9 +79,14 @@ export const DEFAULT_PREMIUM_EMOJI_CATALOG: PremiumEmojiConfig[] = [
 ];
 
 export function normalizeMenuButtons(value: unknown): BotButtonConfig[] {
+  return normalizeBotButtons(value).filter((button) => MAIN_MENU_BUTTON_KEYS.includes(button.key));
+}
+
+export function normalizeBotButtons(value: unknown, legacyMenuValue?: unknown): BotButtonConfig[] {
   const configured = Array.isArray(value) ? value : [];
+  const legacyConfigured = Array.isArray(legacyMenuValue) ? legacyMenuValue : [];
   const byKey = new Map<string, Record<string, unknown>>();
-  for (const item of configured) {
+  for (const item of [...legacyConfigured, ...configured]) {
     if (item && typeof item === "object" && !Array.isArray(item)) {
       const record = item as Record<string, unknown>;
       if (typeof record.key === "string") {
@@ -62,7 +95,7 @@ export function normalizeMenuButtons(value: unknown): BotButtonConfig[] {
     }
   }
 
-  return DEFAULT_MENU_BUTTONS.map((fallback) => {
+  return DEFAULT_BOT_BUTTONS.map((fallback) => {
     const item = byKey.get(fallback.key);
     if (!item) {
       return fallback;

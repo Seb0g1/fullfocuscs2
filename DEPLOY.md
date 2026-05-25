@@ -56,6 +56,9 @@ ADMIN_TELEGRAM_IDS=962443492
 ADMIN_DEV_LOGIN=false
 MEDIA_ROOT=/app/media
 DOCKER_NGINX_PORT=18080
+GRENADE_VIDEO_PRESET=superfast
+GRENADE_VIDEO_CRF=24
+GRENADE_VIDEO_THREADS=0
 
 NEXT_PUBLIC_API_URL=/api
 NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=fullfocuscs2_bot
@@ -70,6 +73,7 @@ Notes:
 - In BotFather run `/setdomain`, choose `@fullfocuscs2_bot`, and set `tiktok.sebog1.ru` before testing Telegram Login.
 - Generate `JWT_SECRET` with `openssl rand -hex 32`.
 - Keep `.env` only on the server. Do not commit it.
+- `GRENADE_VIDEO_PRESET`, `GRENADE_VIDEO_CRF` and `GRENADE_VIDEO_THREADS` tune ffmpeg speed/quality for the grenade video adapter. The defaults are optimized for fast Telegram MP4 renders.
 
 ## 4. Start Stack
 
@@ -183,8 +187,9 @@ Admin panel smoke:
 
 1. Open `https://tiktok.sebog1.ru/login`.
 2. Log in through Telegram Login.
-3. Check dashboard preview, settings, users and grenade catalog.
-4. In settings, set welcome text/image URL and verify `/start` uses them.
+3. Check dashboard, settings, users, grenade catalog, broadcasts and analytics.
+4. In settings, upload welcome image, edit bot button preview and verify `/start` uses the saved settings.
+5. In broadcasts, import a small test file with Telegram IDs, create a banner draft and send a test campaign to yourself.
 
 ## 7. Updates
 
@@ -193,8 +198,11 @@ git pull
 docker compose down
 docker compose up -d --build
 docker compose exec server sh -lc 'corepack pnpm --filter @fullfocus/server prisma:seed'
+docker compose ps
 docker compose logs -f server
 ```
+
+The server container runs `prisma migrate deploy` on startup, so the broadcasts/analytics migration is applied automatically before the app starts.
 
 ## 8. Troubleshooting
 
