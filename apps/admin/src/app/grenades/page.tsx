@@ -19,6 +19,9 @@ interface CsMap {
   name: string;
   active: boolean;
   overviewImageUrl: string | null;
+  emoji?: string | null;
+  premiumEmojiId?: string | null;
+  buttonStyle?: "default" | "primary" | "success" | "danger";
   _count?: { lineups: number };
 }
 
@@ -33,6 +36,9 @@ interface Lineup {
   id: string;
   mapName: string;
   mapSlug: string;
+  mapEmoji?: string | null;
+  mapPremiumEmojiId?: string | null;
+  mapButtonStyle?: "default" | "primary" | "success" | "danger";
   side: Side;
   grenadeType: GrenadeType;
   area: string;
@@ -117,6 +123,13 @@ const statusOptions: SelectOption[] = [
   { value: "false", label: "Draft" }
 ];
 
+const buttonStyleOptions: SelectOption[] = [
+  { value: "default", label: "Default" },
+  { value: "primary", label: "Primary" },
+  { value: "success", label: "Success" },
+  { value: "danger", label: "Danger" }
+];
+
 const mediaTypeOptions: SelectOption[] = [
   { value: "image", label: "Фото" },
   { value: "video", label: "Видео" },
@@ -139,6 +152,7 @@ function Grenades() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState({ mapId: "", side: "", type: "", areaSlug: "", published: "" });
+  const [mapDraft, setMapDraft] = useState({ emoji: "", premiumEmojiId: "", buttonStyle: "default" as "default" | "primary" | "success" | "danger" });
 
   const maps = useQuery({ queryKey: ["maps"], queryFn: () => api<CsMap[]>("/admin/maps") });
   const lineups = useQuery({
@@ -155,10 +169,19 @@ function Grenades() {
   const mapOptions = maps.data ?? [];
   const selectedMap = mapOptions.find((map) => map.id === form.mapId) ?? mapOptions[0];
   const selectedMapId = form.mapId || selectedMap?.id || "";
-  const mapSelectOptions = mapOptions.map((map) => ({ value: map.id, label: map.name }));
+  const mapSelectOptions = mapOptions.map((map) => ({ value: map.id, label: `${map.emoji ? `${map.emoji} ` : ""}${map.name}` }));
   const filterMapOptions = [{ value: "", label: "Все карты" }, ...mapSelectOptions];
   const mediaItems = useMemo(() => normalizeFormMediaItems(form.mediaItems, form.title), [form.mediaItems, form.title]);
   const firstMedia = mediaItems[0];
+
+  useEffect(() => {
+    if (!selectedMap) return;
+    setMapDraft({
+      emoji: selectedMap.emoji ?? "",
+      premiumEmojiId: selectedMap.premiumEmojiId ?? "",
+      buttonStyle: selectedMap.buttonStyle ?? "default"
+    });
+  }, [selectedMap?.id, selectedMap?.emoji, selectedMap?.premiumEmojiId, selectedMap?.buttonStyle]);
 
   const create = useMutation({
     mutationFn: (body: ReturnType<typeof toPayload>) => api("/admin/grenades", { method: "POST", body: JSON.stringify(body) }),
@@ -187,9 +210,24 @@ function Grenades() {
 
   const updateMap = useMutation({
     mutationFn: ({ id, body }: { id: string; body: Partial<CsMap> }) => api(`/admin/maps/${id}`, { method: "PUT", body: JSON.stringify(body) }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["maps"] }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["maps"] });
+      await queryClient.invalidateQueries({ queryKey: ["lineups"] });
+    },
     onError: (mutationError) => setError(toErrorText(mutationError, "Не удалось обновить карту"))
   });
+
+  async function saveMapAppearance() {
+    if (!selectedMapId) return;
+    await updateMap.mutateAsync({
+      id: selectedMapId,
+      body: {
+        emoji: mapDraft.emoji.trim() || null,
+        premiumEmojiId: mapDraft.premiumEmojiId.trim() || null,
+        buttonStyle: mapDraft.buttonStyle
+      }
+    });
+  }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -342,6 +380,37 @@ function Grenades() {
             ) : (
               <div className="grid h-20 place-items-center rounded-lg border border-dashed border-white/10 text-sm text-zinc-500">Картинка не загружена</div>
             )}
+            <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-sm font-bold text-zinc-200">Emoji и стиль кнопки карты</div>
+                  <div className="text-xs text-zinc-500">Fallback emoji виден всем, premium custom_emoji_id появится на поддерживаемых клиентах Telegram.</div>
+                </div>
+                <button className="btn btn-ghost h-9" type="button" disabled={!selectedMapId || updateMap.isPending} onClick={saveMapAppearance}>
+                  <Save size={16} />
+                  Сохранить
+                </button>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-[88px_1fr_140px]">
+                <input
+                  className="field"
+                  placeholder="🏜"
+                  value={mapDraft.emoji}
+                  onChange={(event) => setMapDraft({ ...mapDraft, emoji: event.target.value })}
+                />
+                <input
+                  className="field"
+                  placeholder="premium custom_emoji_id"
+                  value={mapDraft.premiumEmojiId}
+                  onChange={(event) => setMapDraft({ ...mapDraft, premiumEmojiId: event.target.value })}
+                />
+                <SelectField
+                  value={mapDraft.buttonStyle}
+                  options={buttonStyleOptions}
+                  onChange={(value) => setMapDraft({ ...mapDraft, buttonStyle: value as "default" | "primary" | "success" | "danger" })}
+                />
+              </div>
+            </div>
           </div>
 
           <div className="space-y-3 border-t border-white/10 pt-4">
@@ -450,7 +519,7 @@ function Grenades() {
                           {lineup.from} → {lineup.to}
                         </div>
                       </td>
-                      <td className="px-3 py-4">{lineup.mapName}</td>
+                      <td className="px-3 py-4">{lineup.mapEmoji ? `${lineup.mapEmoji} ` : ""}{lineup.mapName}</td>
                       <td className="px-3 py-4 text-zinc-300">
                         {sideText(lineup.side)} · {lineup.area} · {grenadeLabels[lineup.grenadeType]}
                       </td>
@@ -516,7 +585,7 @@ function TelegramPreview({ form, mediaItems, firstMedia, selectedMap }: { form: 
         )}
         <div className="space-y-1 p-3 text-sm">
           <div className="font-bold text-white">{form.title || "Название раскида"}</div>
-          <div className="text-zinc-200">{selectedMap?.name ?? "Карта"} · {sideText(form.side)} · {form.area || "Часть карты"}</div>
+          <div className="text-zinc-200">{selectedMap?.emoji ? `${selectedMap.emoji} ` : ""}{selectedMap?.name ?? "Карта"} · {sideText(form.side)} · {form.area || "Часть карты"}</div>
           <div className="text-zinc-300">1 - {form.from || "откуда"}</div>
           <div className="text-zinc-300">2 - {form.to || "куда"}</div>
         </div>

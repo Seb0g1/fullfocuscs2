@@ -83,7 +83,16 @@ export class StatsService {
     };
   }
 
-  async recordBotUser(telegramUser: { id: number; username?: string; first_name?: string }, payload: StatCardPayload) {
+  async recordBotUser(telegramUser: { id: number; username?: string; first_name?: string }, payload: StatCardPayload, options: { bind?: boolean } = {}) {
+    const bindData = options.bind
+      ? {
+          boundFaceitPlayerId: payload.player.playerId,
+          boundFaceitNickname: payload.player.nickname,
+          boundFaceitElo: payload.player.elo,
+          boundAt: new Date()
+        }
+      : {};
+
     await this.prisma.botUser.upsert({
       where: { telegramId: String(telegramUser.id) },
       update: {
@@ -92,6 +101,7 @@ export class StatsService {
         faceitPlayerId: payload.player.playerId,
         faceitNickname: payload.player.nickname,
         lastElo: payload.player.elo,
+        ...bindData,
         requests: { increment: 1 },
         lastSeenAt: new Date()
       },
@@ -102,6 +112,14 @@ export class StatsService {
         faceitPlayerId: payload.player.playerId,
         faceitNickname: payload.player.nickname,
         lastElo: payload.player.elo,
+        ...(options.bind
+          ? bindData
+          : {
+              boundFaceitPlayerId: null,
+              boundFaceitNickname: null,
+              boundFaceitElo: null,
+              boundAt: null
+            }),
         requests: 1
       }
     });
@@ -109,8 +127,8 @@ export class StatsService {
 
   async getLeaderboard(limit = 10) {
     return this.prisma.botUser.findMany({
-      where: { lastElo: { not: null } },
-      orderBy: [{ lastElo: "desc" }, { requests: "desc" }],
+      where: { boundFaceitElo: { not: null } },
+      orderBy: [{ boundFaceitElo: "desc" }, { requests: "desc" }],
       take: limit
     });
   }
@@ -127,6 +145,20 @@ export class StatsService {
           faceitPlayerId: null,
           faceitNickname: null,
           lastElo: null
+        }
+      })
+      .catch(() => undefined);
+  }
+
+  async clearBoundFaceit(telegramId: string) {
+    await this.prisma.botUser
+      .update({
+        where: { telegramId },
+        data: {
+          boundFaceitPlayerId: null,
+          boundFaceitNickname: null,
+          boundFaceitElo: null,
+          boundAt: null
         }
       })
       .catch(() => undefined);

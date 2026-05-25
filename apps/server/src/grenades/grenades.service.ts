@@ -61,7 +61,7 @@ export class GrenadesService {
         this.prisma.csMap.upsert({
           where: { slug: map.slug },
           update: {},
-          create: { slug: map.slug, name: map.name, sortOrder: index, overviewImageUrl: null }
+          create: { slug: map.slug, name: map.name, sortOrder: index, overviewImageUrl: null, emoji: null, premiumEmojiId: null, buttonStyle: "default" }
         })
       )
     );
@@ -87,24 +87,45 @@ export class GrenadesService {
     });
   }
 
-  async createMap(input: { slug: string; name: string; active?: boolean; overviewImageUrl?: string | null }) {
+  async createMap(input: {
+    slug: string;
+    name: string;
+    active?: boolean;
+    overviewImageUrl?: string | null;
+    emoji?: string | null;
+    premiumEmojiId?: string | null;
+    buttonStyle?: string | null;
+  }) {
     return this.prisma.csMap.create({
       data: {
         slug: input.slug.toLowerCase().trim(),
         name: input.name.trim(),
         active: input.active ?? true,
-        overviewImageUrl: input.overviewImageUrl ?? null
+        overviewImageUrl: input.overviewImageUrl ?? null,
+        emoji: normalizeNullableString(input.emoji),
+        premiumEmojiId: normalizeNullableString(input.premiumEmojiId),
+        buttonStyle: normalizeButtonStyle(input.buttonStyle)
       }
     });
   }
 
-  async updateMap(id: string, input: { name?: string; active?: boolean; overviewImageUrl?: string | null }) {
+  async updateMap(id: string, input: {
+    name?: string;
+    active?: boolean;
+    overviewImageUrl?: string | null;
+    emoji?: string | null;
+    premiumEmojiId?: string | null;
+    buttonStyle?: string | null;
+  }) {
     return this.prisma.csMap.update({
       where: { id },
       data: {
         name: input.name,
         active: input.active,
-        overviewImageUrl: input.overviewImageUrl
+        overviewImageUrl: input.overviewImageUrl,
+        emoji: input.emoji === undefined ? undefined : normalizeNullableString(input.emoji),
+        premiumEmojiId: input.premiumEmojiId === undefined ? undefined : normalizeNullableString(input.premiumEmojiId),
+        buttonStyle: input.buttonStyle === undefined ? undefined : normalizeButtonStyle(input.buttonStyle)
       }
     });
   }
@@ -219,6 +240,85 @@ export class GrenadesService {
     return { ok: true };
   }
 
+  async toggleFavorite(telegramId: string, lineupId: string) {
+    const user = await this.prisma.botUser.findUnique({ where: { telegramId } });
+    if (!user) {
+      throw new HttpException("Сначала открой /start, чтобы бот создал профиль.", HttpStatus.BAD_REQUEST);
+    }
+    const existing = await this.prisma.botUserFavoriteLineup.findUnique({
+      where: { userId_lineupId: { userId: user.id, lineupId } }
+    });
+    if (existing) {
+      await this.prisma.botUserFavoriteLineup.delete({ where: { id: existing.id } });
+      return { favorited: false };
+    }
+
+    await this.prisma.botUserFavoriteLineup.create({ data: { userId: user.id, lineupId } });
+    return { favorited: true };
+  }
+
+  async listFavorites(telegramId: string) {
+    const user = await this.prisma.botUser.findUnique({ where: { telegramId } });
+    if (!user) {
+      return [];
+    }
+    const favorites = await this.prisma.botUserFavoriteLineup.findMany({
+      where: { userId: user.id, lineup: { published: true } },
+      include: { lineup: { include: { map: true } } },
+      orderBy: { createdAt: "desc" },
+      take: 20
+    });
+    return favorites.map((favorite) => serializeLineup(favorite.lineup));
+  }
+
+  async listTrainingSet(filter: { mapSlug: string; side: string; limit?: number }) {
+    const lineups = await this.listLineups({
+      mapSlug: filter.mapSlug,
+      side: filter.side,
+      published: true
+    });
+    return lineups.slice(0, filter.limit ?? 5);
+  }
+
+  async searchPublishedLineups(query: string) {
+    const normalized = query.trim();
+    if (!normalized) {
+      return [];
+    }
+    const tokens = normalized
+      .toLowerCase()
+      .split(/\s+/)
+      .map((token) => token.trim())
+      .filter(Boolean)
+      .slice(0, 6);
+    if (!tokens.length) {
+      return [];
+    }
+
+    const lineups = await this.prisma.grenadeLineup.findMany({
+      where: {
+        published: true,
+        AND: tokens.map((token) => ({
+          OR: [
+            { title: { contains: token, mode: "insensitive" } },
+            { description: { contains: token, mode: "insensitive" } },
+            { area: { contains: token, mode: "insensitive" } },
+            { areaSlug: { contains: token, mode: "insensitive" } },
+            { fromPosition: { contains: token, mode: "insensitive" } },
+            { toPosition: { contains: token, mode: "insensitive" } },
+            { tags: { has: token } },
+            { map: { name: { contains: token, mode: "insensitive" } } },
+            { map: { slug: { contains: token, mode: "insensitive" } } }
+          ]
+        }))
+      },
+      include: { map: true },
+      orderBy: [{ map: { sortOrder: "asc" } }, { updatedAt: "desc" }],
+      take: 12
+    });
+    return lineups.map(serializeLineup);
+  }
+
   async saveUploadedMedia(file: { filename: string; mimetype: string; toBuffer: () => Promise<Buffer> }) {
     const normalizedMime = file.mimetype.toLowerCase().split(";")[0]?.trim() ?? "";
     const extension = UPLOAD_MIME_EXTENSIONS.get(normalizedMime);
@@ -331,4 +431,17 @@ function uniqueBy<T>(items: T[], getKey: (item: T) => string): T[] {
     seen.add(key);
     return true;
   });
+}
+
+function normalizeNullableString(value: string | null | undefined): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed || null;
+}
+
+function normalizeButtonStyle(value: string | null | undefined): string {
+  const normalized = typeof value === "string" ? value.toLowerCase().trim() : "";
+  return ["default", "primary", "success", "danger"].includes(normalized) ? normalized : "default";
 }

@@ -55,6 +55,9 @@ model CsMap {
   active           Boolean          @default(true)
   sortOrder        Int              @default(0)
   overviewImageUrl String?
+  emoji            String?
+  premiumEmojiId   String?
+  buttonStyle      String           @default("default")
   lineups          GrenadeLineup[]
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
@@ -80,6 +83,7 @@ model GrenadeLineup {
   thumbnailUrl String?
   mediaItems   Json?
   published    Boolean            @default(false)
+  favorites    BotUserFavoriteLineup[]
   createdAt    DateTime           @default(now())
   updatedAt    DateTime           @updatedAt
 
@@ -90,17 +94,34 @@ model GrenadeLineup {
 }
 
 model BotUser {
-  id              String   @id @default(cuid())
-  telegramId      String   @unique
-  username        String?
-  firstName       String?
-  faceitPlayerId  String?
-  faceitNickname  String?
-  lastElo         Int?
-  requests        Int      @default(0)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  lastSeenAt      DateTime @default(now())
+  id                  String                  @id @default(cuid())
+  telegramId          String                  @unique
+  username            String?
+  firstName           String?
+  faceitPlayerId      String?
+  faceitNickname      String?
+  lastElo             Int?
+  boundFaceitPlayerId String?
+  boundFaceitNickname String?
+  boundFaceitElo      Int?
+  boundAt             DateTime?
+  requests            Int                     @default(0)
+  favorites           BotUserFavoriteLineup[]
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
+  lastSeenAt          DateTime                @default(now())
+}
+
+model BotUserFavoriteLineup {
+  id        String         @id @default(cuid())
+  userId    String
+  user      BotUser        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lineupId  String
+  lineup    GrenadeLineup  @relation(fields: [lineupId], references: [id], onDelete: Cascade)
+  createdAt DateTime       @default(now())
+
+  @@unique([userId, lineupId])
+  @@index([lineupId])
 }
 
 model PlayerQueryLog {

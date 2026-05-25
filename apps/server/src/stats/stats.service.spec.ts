@@ -62,4 +62,46 @@ describe("StatsService", () => {
       })
     });
   });
+
+  it("binds FACEIT separately from last viewed player", async () => {
+    const upsert = vi.fn().mockResolvedValue({});
+    const service = new StatsService({} as never, {} as never, { botUser: { upsert } } as never, {} as never);
+    const payload = {
+      player: { playerId: "p1", nickname: "Seb0g1", elo: 2361 }
+    };
+
+    await service.recordBotUser({ id: 42, username: "seb" }, payload as never, { bind: true });
+
+    expect(upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          faceitNickname: "Seb0g1",
+          boundFaceitNickname: "Seb0g1",
+          boundFaceitElo: 2361
+        }),
+        create: expect.objectContaining({
+          faceitNickname: "Seb0g1",
+          boundFaceitNickname: "Seb0g1",
+          boundFaceitElo: 2361
+        })
+      })
+    );
+  });
+
+  it("keeps bound FACEIT unchanged when viewing another player", async () => {
+    const upsert = vi.fn().mockResolvedValue({});
+    const service = new StatsService({} as never, {} as never, { botUser: { upsert } } as never, {} as never);
+    const payload = {
+      player: { playerId: "p2", nickname: "donk666", elo: 4449 }
+    };
+
+    await service.recordBotUser({ id: 42 }, payload as never, { bind: false });
+
+    const call = upsert.mock.calls[0][0];
+    expect(call.update).not.toHaveProperty("boundFaceitNickname");
+    expect(call.create).toMatchObject({
+      faceitNickname: "donk666",
+      boundFaceitNickname: null
+    });
+  });
 });

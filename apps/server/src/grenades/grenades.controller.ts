@@ -27,14 +27,36 @@ export class GrenadesController {
   @Post("admin/maps")
   @UseGuards(AdminGuard)
   @AdminRoles("editor")
-  async createMap(@Body() body: { slug: string; name: string; active?: boolean; overviewImageUrl?: string | null }) {
+  async createMap(
+    @Body()
+    body: {
+      slug: string;
+      name: string;
+      active?: boolean;
+      overviewImageUrl?: string | null;
+      emoji?: string | null;
+      premiumEmojiId?: string | null;
+      buttonStyle?: string | null;
+    }
+  ) {
     return this.grenades.createMap(body);
   }
 
   @Put("admin/maps/:id")
   @UseGuards(AdminGuard)
   @AdminRoles("editor")
-  async updateMap(@Param("id") id: string, @Body() body: { name?: string; active?: boolean; overviewImageUrl?: string | null }) {
+  async updateMap(
+    @Param("id") id: string,
+    @Body()
+    body: {
+      name?: string;
+      active?: boolean;
+      overviewImageUrl?: string | null;
+      emoji?: string | null;
+      premiumEmojiId?: string | null;
+      buttonStyle?: string | null;
+    }
+  ) {
     return this.grenades.updateMap(id, body);
   }
 

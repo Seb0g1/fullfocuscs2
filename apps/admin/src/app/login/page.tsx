@@ -66,6 +66,16 @@ export default function LoginPage() {
           </div>
         </div>
 
+        <div className="mx-auto w-full max-w-md lg:hidden">
+          <div className="mb-4 inline-flex items-center gap-2 rounded-lg border border-focus/30 bg-focus/10 px-3 py-2 text-sm font-semibold text-focus">
+            <Target size={17} />
+            FullFocus cs2 admin
+          </div>
+          <h1 className="mb-5 text-3xl font-black leading-tight">
+            Контроль бота, статистики FACEIT и раскидов в одном месте.
+          </h1>
+        </div>
+
         <div className="panel mx-auto w-full max-w-md p-6 shadow-glow">
           <div className="mb-7 flex items-center gap-4">
             <div className="grid h-14 w-14 place-items-center rounded-lg border border-focus/60 bg-focus/15 text-focus shadow-glow">

@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { CS2_MAPS } from "@fullfocus/shared";
+import { DEFAULT_MENU_BUTTONS, DEFAULT_PREMIUM_EMOJI_CATALOG } from "../src/bot/bot-ui";
 
 const prisma = new PrismaClient();
 
@@ -9,7 +10,15 @@ async function main() {
       prisma.csMap.upsert({
         where: { slug: map.slug },
         update: { name: map.name, sortOrder: index, active: true },
-        create: { slug: map.slug, name: map.name, sortOrder: index, active: true }
+        create: {
+          slug: map.slug,
+          name: map.name,
+          sortOrder: index,
+          active: true,
+          emoji: null,
+          premiumEmojiId: null,
+          buttonStyle: "default"
+        }
       })
     )
   );
@@ -20,7 +29,7 @@ async function main() {
     create: {
       key: "welcomeText",
       value: {
-        text: "Привет! Я FullFocus cs2: FACEIT статистика, сравнение игроков и раскиды гранат."
+        text: "Привет! Я FullFocus cs2: FACEIT-статистика, сравнение игроков, раскиды гранат и персональный CS2-профиль."
       }
     }
   });
@@ -31,6 +40,24 @@ async function main() {
     create: {
       key: "welcomeImageUrl",
       value: { url: "" }
+    }
+  });
+
+  await prisma.botSetting.upsert({
+    where: { key: "menuButtons" },
+    update: {},
+    create: {
+      key: "menuButtons",
+      value: DEFAULT_MENU_BUTTONS
+    }
+  });
+
+  await prisma.botSetting.upsert({
+    where: { key: "premiumEmojiCatalog" },
+    update: {},
+    create: {
+      key: "premiumEmojiCatalog",
+      value: DEFAULT_PREMIUM_EMOJI_CATALOG
     }
   });
 }

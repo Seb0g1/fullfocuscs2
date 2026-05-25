@@ -16,6 +16,9 @@ export const grenadeLineupSchema = z.object({
   mapSlug: z.string(),
   mapName: z.string(),
   mapOverviewImageUrl: z.string().nullable().optional(),
+  mapEmoji: z.string().nullable().optional(),
+  mapPremiumEmojiId: z.string().nullable().optional(),
+  mapButtonStyle: z.enum(["default", "primary", "success", "danger"]).optional(),
   side: z.enum(["t", "ct", "both"]),
   grenadeType: z.enum(["smoke", "flash", "molotov", "he"]),
   area: z.string(),
@@ -46,6 +49,27 @@ export interface CsMapSummary {
   active: boolean;
   sortOrder: number;
   overviewImageUrl: string | null;
+  emoji?: string | null;
+  premiumEmojiId?: string | null;
+  buttonStyle?: "default" | "primary" | "success" | "danger";
+}
+
+export type BotButtonStyle = "default" | "primary" | "success" | "danger";
+
+export interface BotButtonConfig {
+  key: "stats" | "compare" | "grenades" | "leaderboard" | "settings" | "profile" | "favorites" | "training" | "search";
+  label: string;
+  fallbackEmoji: string;
+  premiumEmojiId: string | null;
+  style: BotButtonStyle;
+  enabled: boolean;
+}
+
+export interface PremiumEmojiConfig {
+  key: string;
+  title: string;
+  fallbackEmoji: string;
+  customEmojiId: string;
 }
 
 export interface AdminUser {

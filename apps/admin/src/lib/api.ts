@@ -1,13 +1,16 @@
 export const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
 
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const headers = new Headers(init.headers);
+  const hasBody = init.body !== undefined && init.body !== null;
+  if (hasBody && !(init.body instanceof FormData) && !headers.has("content-type")) {
+    headers.set("content-type", "application/json");
+  }
+
   const response = await fetch(`${API_URL}${path}`, {
     ...init,
     credentials: "include",
-    headers: {
-      ...(init.body instanceof FormData ? {} : { "content-type": "application/json" }),
-      ...(init.headers ?? {})
-    }
+    headers
   });
 
   if (!response.ok) {
