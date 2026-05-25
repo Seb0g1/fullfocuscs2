@@ -1,0 +1,280 @@
+import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
+import { mkdir, rm, writeFile } from "node:fs/promises";
+import { isAbsolute, join, resolve } from "node:path";
+import { HttpException, HttpStatus, Injectable } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import type { GrenadeMediaItem } from "@fullfocus/shared";
+
+const MAX_MEDIA_BYTES = 64 * 1024 * 1024;
+const INTRO_SECONDS = 1.2;
+const OUTPUT_WIDTH = 1080;
+const OUTPUT_HEIGHT = 1920;
+const VIDEO_MIME_EXTENSIONS = new Map([
+  ["video/mp4", ".mp4"],
+  ["video/webm", ".webm"],
+  ["video/quicktime", ".mov"]
+]);
+
+interface UploadedVideo {
+  filename: string;
+  mimetype: string;
+  toBuffer: () => Promise<Buffer>;
+}
+
+interface CommandResult {
+  stdout: string;
+  stderr: string;
+}
+
+export interface GrenadeVideoInput {
+  file: UploadedVideo;
+  flightSeconds: unknown;
+  aimFrameSeconds: unknown;
+  title?: unknown;
+}
+
+export interface GrenadeVideoOutput {
+  mediaItem: GrenadeMediaItem;
+  source: {
+    filename: string;
+    durationSeconds: number;
+    width: number;
+    height: number;
+  };
+}
+
+@Injectable()
+export class GrenadeVideoService {
+  constructor(private readonly config: ConfigService) {}
+
+  async process(input: GrenadeVideoInput): Promise<GrenadeVideoOutput> {
+    const normalizedMime = input.file.mimetype.toLowerCase().split(";")[0]?.trim() ?? "";
+    const extension = VIDEO_MIME_EXTENSIONS.get(normalizedMime);
+    if (!extension) {
+      throw new HttpException("Можно загрузить только webm, mp4 или mov видео", HttpStatus.BAD_REQUEST);
+    }
+
+    const flightSeconds = parseSeconds(input.flightSeconds, "Время полёта должно быть числом больше 0", false);
+    const aimFrameSeconds = parseSeconds(input.aimFrameSeconds, "Стоп-кадр должен быть числом 0 или больше", true);
+    const buffer = await input.file.toBuffer();
+    if (!buffer.length) {
+      throw new HttpException("Файл пустой", HttpStatus.BAD_REQUEST);
+    }
+    if (buffer.byteLength > MAX_MEDIA_BYTES) {
+      throw new HttpException("Файл слишком большой. Максимум 64 MB", HttpStatus.PAYLOAD_TOO_LARGE);
+    }
+
+    const mediaRoot = this.mediaRoot();
+    const tempRoot = join(mediaRoot, "tmp");
+    await mkdir(mediaRoot, { recursive: true });
+    await mkdir(tempRoot, { recursive: true });
+
+    const id = randomUUID();
+    const sourcePath = join(tempRoot, `${id}-source${extension}`);
+    const aimFramePath = join(tempRoot, `${id}-aim.jpg`);
+    const outputFilename = `${id}.mp4`;
+    const thumbnailFilename = `${id}.jpg`;
+    const outputPath = join(mediaRoot, outputFilename);
+    const thumbnailPath = join(mediaRoot, thumbnailFilename);
+
+    await writeFile(sourcePath, buffer);
+
+    try {
+      const source = await this.probe(sourcePath);
+      if (aimFrameSeconds > source.durationSeconds) {
+        throw new HttpException("Стоп-кадр не может быть позже конца видео", HttpStatus.BAD_REQUEST);
+      }
+
+      const coverPath = this.coverPath();
+      await this.runFfmpeg([
+        "-y",
+        "-ss",
+        String(aimFrameSeconds),
+        "-i",
+        sourcePath,
+        "-frames:v",
+        "1",
+        "-q:v",
+        "2",
+        aimFramePath
+      ], "Не удалось извлечь стоп-кадр из видео");
+
+      await this.runFfmpeg([
+        "-y",
+        "-loop",
+        "1",
+        "-i",
+        coverPath,
+        "-i",
+        aimFramePath,
+        "-filter_complex",
+        `[0:v]scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=increase,crop=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT},setsar=1[bg];[1:v]scale=${OUTPUT_WIDTH}:-2,setsar=1[aim];[bg][aim]overlay=(W-w)/2:(H-h)/2,format=yuv420p[v]`,
+        "-map",
+        "[v]",
+        "-frames:v",
+        "1",
+        "-q:v",
+        "2",
+        thumbnailPath
+      ], "Не удалось собрать обложку стоп-кадра");
+
+      await this.runFfmpeg([
+        "-y",
+        "-loop",
+        "1",
+        "-t",
+        String(INTRO_SECONDS),
+        "-i",
+        thumbnailPath,
+        "-loop",
+        "1",
+        "-i",
+        coverPath,
+        "-i",
+        sourcePath,
+        "-filter_complex",
+        `[0:v]scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT},setsar=1,trim=duration=${INTRO_SECONDS},setpts=PTS-STARTPTS[intro];[1:v]scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=increase,crop=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT},setsar=1[bg];[2:v]scale=${OUTPUT_WIDTH}:-2,setsar=1[clip];[bg][clip]overlay=(W-w)/2:(H-h)/2:shortest=1,format=yuv420p,setpts=PTS-STARTPTS[main];[intro][main]concat=n=2:v=1:a=0[v]`,
+        "-map",
+        "[v]",
+        "-an",
+        "-r",
+        "30",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "veryfast",
+        "-crf",
+        "23",
+        "-pix_fmt",
+        "yuv420p",
+        "-movflags",
+        "+faststart",
+        outputPath
+      ], "Не удалось собрать Telegram-ready MP4");
+
+      const url = this.publicMediaUrl(outputFilename);
+      const thumbnailUrl = this.publicMediaUrl(thumbnailFilename);
+      return {
+        mediaItem: {
+          type: "video",
+          url,
+          thumbnailUrl,
+          caption: normalizeTitle(input.title),
+          flightSeconds,
+          aimFrameSeconds,
+          adapted: true
+        },
+        source
+      };
+    } finally {
+      await Promise.all([rm(sourcePath, { force: true }), rm(aimFramePath, { force: true })]);
+    }
+  }
+
+  protected runCommand(command: string, args: string[]): Promise<CommandResult> {
+    return new Promise((resolveCommand, rejectCommand) => {
+      const child = spawn(command, args, { windowsHide: true });
+      let stdout = "";
+      let stderr = "";
+      child.stdout.on("data", (chunk: Buffer) => {
+        stdout += chunk.toString("utf8");
+      });
+      child.stderr.on("data", (chunk: Buffer) => {
+        stderr += chunk.toString("utf8");
+      });
+      child.on("error", rejectCommand);
+      child.on("close", (code) => {
+        if (code === 0) {
+          resolveCommand({ stdout, stderr });
+          return;
+        }
+        rejectCommand(new Error(stderr || `${command} exited with code ${code}`));
+      });
+    });
+  }
+
+  private async probe(sourcePath: string) {
+    let output: CommandResult;
+    try {
+      output = await this.runCommand("ffprobe", ["-v", "error", "-show_format", "-show_streams", "-of", "json", sourcePath]);
+    } catch {
+      throw new HttpException("Не удалось прочитать параметры видео. Проверь ffprobe и файл.", HttpStatus.UNPROCESSABLE_ENTITY);
+    }
+
+    let parsed: {
+      format?: { duration?: string; size?: string };
+      streams?: Array<{ codec_type?: string; width?: number; height?: number; duration?: string }>;
+    };
+    try {
+      parsed = JSON.parse(output.stdout || "{}") as typeof parsed;
+    } catch {
+      throw new HttpException("ffprobe вернул некорректные данные по видео", HttpStatus.UNPROCESSABLE_ENTITY);
+    }
+    const video = parsed.streams?.find((stream) => stream.codec_type === "video");
+    const durationSeconds = Number(parsed.format?.duration ?? video?.duration ?? 0);
+    const width = Number(video?.width ?? 0);
+    const height = Number(video?.height ?? 0);
+
+    if (!Number.isFinite(durationSeconds) || durationSeconds <= 0 || !width || !height) {
+      throw new HttpException("Не удалось определить длительность или размер видео", HttpStatus.UNPROCESSABLE_ENTITY);
+    }
+
+    return {
+      filename: sourcePath.split(/[\\/]/).pop() ?? "source",
+      durationSeconds: round(durationSeconds),
+      width,
+      height
+    };
+  }
+
+  private async runFfmpeg(args: string[], errorMessage: string) {
+    try {
+      await this.runCommand("ffmpeg", args);
+    } catch {
+      throw new HttpException(errorMessage, HttpStatus.UNPROCESSABLE_ENTITY);
+    }
+  }
+
+  private mediaRoot(): string {
+    const mediaRootConfig = this.config.get<string>("MEDIA_ROOT") ?? "./media";
+    return isAbsolute(mediaRootConfig) ? mediaRootConfig : resolve(process.cwd(), mediaRootConfig);
+  }
+
+  private coverPath(): string {
+    const configured = this.config.get<string>("GRENADE_VIDEO_COVER_PATH");
+    const candidates = [
+      configured,
+      resolve(process.cwd(), "public", "back-fro-granades.png"),
+      resolve(__dirname, "..", "..", "..", "..", "public", "back-fro-granades.png")
+    ].filter((path): path is string => Boolean(path));
+
+    const found = candidates.find((path) => existsSync(path));
+    if (!found) {
+      throw new HttpException("Фон для видео не найден: public/back-fro-granades.png", HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+    return found;
+  }
+
+  private publicMediaUrl(filename: string): string {
+    const publicBase = this.config.get<string>("ADMIN_PUBLIC_URL")?.replace(/\/$/, "");
+    return publicBase ? `${publicBase}/media/${filename}` : `/media/${filename}`;
+  }
+}
+
+function parseSeconds(value: unknown, message: string, allowZero: boolean): number {
+  const parsed = typeof value === "number" ? value : Number(String(value ?? "").replace(",", "."));
+  if (!Number.isFinite(parsed) || parsed < 0 || (!allowZero && parsed <= 0)) {
+    throw new HttpException(message, HttpStatus.BAD_REQUEST);
+  }
+  return round(parsed);
+}
+
+function normalizeTitle(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function round(value: number): number {
+  return Math.round(value * 100) / 100;
+}

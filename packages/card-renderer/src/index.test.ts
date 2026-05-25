@@ -47,8 +47,22 @@ describe("renderStatCard", () => {
   it("renders avatar image and png level icon in svg", () => {
     const svg = renderStatCardSvg(payload);
     expect(svg).toContain("<image");
-    expect(svg).toContain("LVL");
+    expect(svg).toContain("FACEIT");
+    expect(svg).not.toContain("LVL 10");
     expect(svg.match(/data:image\/png;base64/g)?.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it("keeps a flat or missing elo chart centered with a clear fallback", () => {
+    const svg = renderStatCardSvg({
+      ...payload,
+      currentWindow: {
+        ...payload.currentWindow,
+        eloSeries: []
+      }
+    });
+
+    expect(svg).toContain("История ELO недоступна");
+    expect(svg).toContain("88.0,708.0 508.0,708.0");
   });
 
   it("keeps dense right-side text inside dedicated rows", () => {
@@ -68,7 +82,7 @@ describe("renderStatCard", () => {
     expect(svg).toContain(">ПОСЛЕДНИЕ МАТЧИ</text>");
     expect(svg).toContain(">K / A / D</text>");
     expect(svg).toContain(">613 / 186 / 577</text>");
-    expect(svg).toContain('x="808" y="898"');
+    expect(svg).toContain(">Недостаточно данных</text>");
     expect(svg).not.toContain("K / A / D 613");
   });
 
@@ -81,6 +95,7 @@ describe("renderStatCard", () => {
     const png = await renderComparisonCard(comparison);
     const svg = renderComparisonCardSvg(comparison);
     expect(png.subarray(1, 4).toString()).toBe("PNG");
+    expect(svg).not.toContain("LVL 10");
     expect(svg.match(/data:image\/png;base64/g)?.length).toBeGreaterThanOrEqual(8);
   });
 });

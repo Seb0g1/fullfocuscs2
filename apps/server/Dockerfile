@@ -12,7 +12,7 @@ RUN pnpm -r --filter @fullfocus/server... build
 
 FROM node:24-alpine AS runtime
 WORKDIR /app
-RUN apk add --no-cache fontconfig ttf-dejavu && corepack enable && corepack prepare pnpm@10.12.4 --activate
+RUN apk add --no-cache ffmpeg fontconfig ttf-dejavu && corepack enable && corepack prepare pnpm@10.12.4 --activate
 COPY --from=build /app /app
 EXPOSE 4000
 CMD ["sh", "-c", "pnpm --filter @fullfocus/server prisma:deploy && node apps/server/dist/main.js"]

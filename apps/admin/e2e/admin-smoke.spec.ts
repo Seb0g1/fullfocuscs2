@@ -28,6 +28,16 @@ test("grenade admin uses dark custom controls and empty state", async ({ page })
   await expect(page.getByRole("listbox")).toBeVisible();
   await expect(page.getByRole("option", { name: "Inferno" })).toBeVisible();
   await page.keyboard.press("Escape");
+  await page.getByTestId("grenade-video-upload").setInputFiles({
+    name: "lineup.webm",
+    mimeType: "video/webm",
+    buffer: Buffer.from("mock-video")
+  });
+  await page.getByPlaceholder("Полёт, сек").fill("2.4");
+  await page.getByPlaceholder("Стоп-кадр, сек").fill("1.2");
+  await page.getByRole("button", { name: "Собрать видео" }).click();
+  await expect(page.getByText("Видео собрано")).toBeVisible();
+  await expect(page.getByText("FullFocus MP4 · полёт 2.4 сек.")).toBeVisible();
   await expect(page.getByText("Каталог пуст")).toBeVisible();
 });
 
@@ -44,15 +54,39 @@ test("users and settings pages expose production controls", async ({ page }) => 
   await expect(page.getByText("https://tiktok.sebog1.ru", { exact: true })).toBeVisible();
 
   const settingsPatchPaths: string[] = [];
+  const settingsPatchBodies: Array<{ settings?: Array<{ key: string; value: unknown }> }> = [];
+  let mediaUploads = 0;
   page.on("request", (request) => {
     const url = new URL(request.url());
+    if (request.method() === "POST" && url.pathname === "/api/admin/media") {
+      mediaUploads += 1;
+    }
     if (request.method() === "PATCH" && url.pathname.startsWith("/api/admin/settings")) {
       settingsPatchPaths.push(url.pathname);
+      const body = request.postData();
+      if (body) {
+        settingsPatchBodies.push(JSON.parse(body));
+      }
     }
   });
+
+  await page.getByTestId("welcome-image-upload").setInputFiles({
+    name: "welcome.webp",
+    mimeType: "image/webp",
+    buffer: Buffer.from("mock-image")
+  });
+  await expect(page.getByText("Картинка загружена.")).toBeVisible();
+  await expect(page.getByLabel("Картинка приветствия")).toHaveValue("/media/welcome-upload.webp");
+  await expect(page.getByRole("img", { name: "Preview приветствия" })).toHaveAttribute("src", /welcome-upload\.webp/);
+
   await page.getByRole("button", { name: "Сохранить всё" }).click();
   await expect(page.getByText("Настройки сохранены")).toBeVisible();
+  expect(mediaUploads).toBe(1);
   expect(settingsPatchPaths).toEqual(["/api/admin/settings"]);
+  expect(settingsPatchBodies[0]?.settings?.find((item) => item.key === "welcomeImageUrl")).toEqual({
+    key: "welcomeImageUrl",
+    value: { url: "/media/welcome-upload.webp" }
+  });
 });
 
 function startMockApi(): Promise<Server> {
@@ -85,6 +119,23 @@ function startMockApi(): Promise<Server> {
     }
     if (url.pathname === "/api/admin/grenades") {
       return json(request, response, []);
+    }
+    if (request.method === "POST" && url.pathname === "/api/admin/media/grenade-video") {
+      return json(request, response, {
+        mediaItem: {
+          type: "video",
+          url: "/media/processed.mp4",
+          thumbnailUrl: "/media/poster.jpg",
+          caption: "lineup.webm",
+          flightSeconds: 2.4,
+          aimFrameSeconds: 1.2,
+          adapted: true
+        },
+        source: { filename: "lineup.webm", durationSeconds: 5.2, width: 1080, height: 1920 }
+      });
+    }
+    if (request.method === "POST" && url.pathname === "/api/admin/media") {
+      return json(request, response, { url: "/media/welcome-upload.webp", filename: "welcome-upload.webp", mimetype: "image/webp" });
     }
     if (url.pathname === "/api/admin/users") {
       return json(request, response, [{ id: "admin", telegramId: "962443492", username: "Seb0g1", firstName: "Даниил", role: "owner", createdAt: new Date(0).toISOString() }]);

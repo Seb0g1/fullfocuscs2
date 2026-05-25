@@ -8,6 +8,7 @@ import { BotService } from "./bot/bot.service";
 import { FaceitClient } from "./faceit/faceit.client";
 import { GrenadesController } from "./grenades/grenades.controller";
 import { GrenadesService } from "./grenades/grenades.service";
+import { GrenadeVideoService } from "./grenades/grenade-video.service";
 import { HealthController } from "./health.controller";
 import { PrismaService } from "./prisma.service";
 import { RedisService } from "./redis.service";
@@ -30,6 +31,7 @@ import { SteamClient } from "./steam/steam.client";
     BotService,
     FaceitClient,
     GrenadesService,
+    GrenadeVideoService,
     PrismaService,
     RedisService,
     StatsService,

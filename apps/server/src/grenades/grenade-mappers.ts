@@ -105,7 +105,10 @@ export function normalizeMediaItems(value: Prisma.JsonValue | null, fallback?: G
         type: type === "video" || type === "external" ? type : "image",
         url,
         thumbnailUrl: typeof record.thumbnailUrl === "string" ? record.thumbnailUrl : null,
-        caption: typeof record.caption === "string" ? record.caption : null
+        caption: typeof record.caption === "string" ? record.caption : null,
+        flightSeconds: numberOrNull(record.flightSeconds),
+        aimFrameSeconds: numberOrNull(record.aimFrameSeconds),
+        adapted: record.adapted === true
       }];
     });
 
@@ -113,6 +116,17 @@ export function normalizeMediaItems(value: Prisma.JsonValue | null, fallback?: G
     return items;
   }
   return fallback?.url ? [fallback] : [];
+}
+
+function numberOrNull(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string") {
+    const parsed = Number(value.replace(",", "."));
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
 }
 
 export function slugify(value: string): string {

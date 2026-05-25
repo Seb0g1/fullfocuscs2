@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Bot, Palette, Plus, Save, Settings, Sparkles, Trash2 } from "lucide-react";
+import { AlertTriangle, Bot, ImageUp, Loader2, Palette, Plus, Save, Settings, Sparkles, Trash2, X } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { AuthGate } from "@/components/auth-gate";
@@ -88,6 +88,7 @@ function SettingsPanel() {
   const [catalog, setCatalog] = useState<PremiumEmojiConfig[]>(defaultCatalog);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [imageNotice, setImageNotice] = useState<string | null>(null);
 
   useEffect(() => {
     const welcome = settings.data?.find((item) => item.key === "welcomeText")?.value as { text?: string } | undefined;
@@ -127,11 +128,44 @@ function SettingsPanel() {
     }
   });
 
+  const uploadWelcomeImage = useMutation({
+    mutationFn: async (file: File) => {
+      const body = new FormData();
+      body.append("file", file);
+      return api<{ url: string }>("/admin/media", { method: "POST", body });
+    },
+    onSuccess: (result) => {
+      setWelcomeImageUrl(result.url);
+      setError(null);
+      setSaved(false);
+      setImageNotice("Картинка загружена. Нажми “Сохранить всё”, чтобы применить.");
+    },
+    onError: (uploadError) => {
+      setSaved(false);
+      setImageNotice(null);
+      setError(uploadError instanceof Error ? uploadError.message : "Не удалось загрузить картинку");
+    }
+  });
+
   async function submit(event: FormEvent) {
     event.preventDefault();
     setError(null);
     setSaved(false);
     await save.mutateAsync();
+  }
+
+  async function uploadImage(file: File | null) {
+    if (!file) return;
+    setError(null);
+    setSaved(false);
+    setImageNotice(null);
+    await uploadWelcomeImage.mutateAsync(file);
+  }
+
+  function clearWelcomeImage() {
+    setWelcomeImageUrl("");
+    setSaved(false);
+    setImageNotice("Картинка очищена. Нажми “Сохранить всё”, чтобы применить.");
   }
 
   function patchButton(index: number, patch: Partial<BotButtonConfig>) {
@@ -202,6 +236,33 @@ function SettingsPanel() {
                 onChange={(event) => setWelcomeImageUrl(event.target.value)}
               />
             </label>
+            <div className="flex flex-col gap-3 rounded-lg border border-white/10 bg-white/[0.03] p-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="text-sm font-bold text-zinc-200">Загрузка картинки</div>
+                <div className="mt-1 text-xs leading-5 text-zinc-500">Рекомендуем webp/png до нескольких MB. URL всё ещё можно вставить вручную выше.</div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <label className={`btn btn-ghost h-10 cursor-pointer ${uploadWelcomeImage.isPending ? "pointer-events-none opacity-60" : ""}`}>
+                  {uploadWelcomeImage.isPending ? <Loader2 size={16} className="animate-spin" /> : <ImageUp size={16} />}
+                  {uploadWelcomeImage.isPending ? "Загружаем" : "Загрузить картинку"}
+                  <input
+                    data-testid="welcome-image-upload"
+                    className="hidden"
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/gif"
+                    disabled={uploadWelcomeImage.isPending || settings.isLoading}
+                    onChange={(event) => uploadImage(event.target.files?.[0] ?? null)}
+                  />
+                </label>
+                <button className="btn btn-ghost h-10" type="button" disabled={!welcomeImageUrl || uploadWelcomeImage.isPending} onClick={clearWelcomeImage}>
+                  <X size={16} />
+                  Очистить
+                </button>
+              </div>
+            </div>
+            {imageNotice ? (
+              <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-sm font-semibold text-emerald-100">{imageNotice}</div>
+            ) : null}
             <div className="overflow-hidden rounded-lg border border-white/10 bg-white/[0.03]">
               {welcomeImageUrl ? (
                 <img src={mediaUrl(welcomeImageUrl)} alt="Preview приветствия" className="h-44 w-full object-cover" />

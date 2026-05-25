@@ -8,7 +8,10 @@ export const grenadeMediaItemSchema = z.object({
   type: z.enum(["image", "video", "external"]),
   url: z.string(),
   thumbnailUrl: z.string().nullable().optional(),
-  caption: z.string().nullable().optional()
+  caption: z.string().nullable().optional(),
+  flightSeconds: z.number().positive().nullable().optional(),
+  aimFrameSeconds: z.number().min(0).nullable().optional(),
+  adapted: z.boolean().optional()
 });
 
 export const grenadeLineupSchema = z.object({

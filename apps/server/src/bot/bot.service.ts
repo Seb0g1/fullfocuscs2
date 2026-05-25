@@ -590,6 +590,10 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
+    const mediaItems = lineup.mediaItems.length
+      ? lineup.mediaItems
+      : [{ type: lineup.mediaType, url: lineup.mediaUrl, thumbnailUrl: lineup.thumbnailUrl, caption: lineup.title, flightSeconds: null, aimFrameSeconds: null, adapted: false }];
+    const flightLine = buildFlightLine(mediaItems, lineup.description);
     const rawCaption = [
       `${lineup.mapEmoji ? `${lineup.mapEmoji} ` : ""}${lineup.mapName} · ${grenadeTypeLabel(lineup.grenadeType)} · ${sideLabel(lineup.side)}`,
       lineup.title,
@@ -598,13 +602,11 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       `Куда: ${lineup.to}`,
       `Часть карты: ${lineup.area}`,
       `Сложность: ${difficultyLabel(lineup.difficulty)}`,
+      flightLine,
       "",
       lineup.description
-    ].join("\n");
+    ].filter((line) => line !== null).join("\n");
     const caption = await this.parseCaption(rawCaption);
-    const mediaItems = lineup.mediaItems.length
-      ? lineup.mediaItems
-      : [{ type: lineup.mediaType, url: lineup.mediaUrl, thumbnailUrl: lineup.thumbnailUrl, caption: lineup.title }];
     const media = mediaItems.filter((item) => item.url).slice(0, 10);
 
     if (!media.length) {
@@ -945,6 +947,14 @@ function difficultyLabel(value: string): string {
   if (value === "hard") return "сложно";
   if (value === "medium") return "средне";
   return "легко";
+}
+
+function buildFlightLine(mediaItems: Array<{ flightSeconds?: number | null }>, description: string): string | null {
+  if (/время\s+пол[её]та/i.test(description)) {
+    return null;
+  }
+  const flightSeconds = mediaItems.find((item) => typeof item.flightSeconds === "number" && item.flightSeconds > 0)?.flightSeconds;
+  return flightSeconds ? `Время полёта: ${formatNumber(flightSeconds, 1)} сек.` : null;
 }
 
 function formatNumber(value: number, digits = 1): string {

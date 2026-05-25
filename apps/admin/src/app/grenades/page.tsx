@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Bomb, Check, Eye, ImageUp, Loader2, Pencil, Plus, Save, Trash2, X } from "lucide-react";
+import { AlertTriangle, Bomb, Check, Eye, Film, ImageUp, Loader2, Pencil, Plus, Save, Trash2, X } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { AuthGate } from "@/components/auth-gate";
@@ -30,6 +30,19 @@ interface MediaItem {
   url: string;
   thumbnailUrl?: string | null;
   caption?: string | null;
+  flightSeconds?: number | null;
+  aimFrameSeconds?: number | null;
+  adapted?: boolean;
+}
+
+interface ProcessedVideoResponse {
+  mediaItem: MediaItem;
+  source: {
+    filename: string;
+    durationSeconds: number;
+    width: number;
+    height: number;
+  };
 }
 
 interface Lineup {
@@ -153,6 +166,8 @@ function Grenades() {
   const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState({ mapId: "", side: "", type: "", areaSlug: "", published: "" });
   const [mapDraft, setMapDraft] = useState({ emoji: "", premiumEmojiId: "", buttonStyle: "default" as "default" | "primary" | "success" | "danger" });
+  const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [videoAdapter, setVideoAdapter] = useState({ flightSeconds: "2", aimFrameSeconds: "0", notice: "" });
 
   const maps = useQuery({ queryKey: ["maps"], queryFn: () => api<CsMap[]>("/admin/maps") });
   const lineups = useQuery({
@@ -217,6 +232,30 @@ function Grenades() {
     onError: (mutationError) => setError(toErrorText(mutationError, "Не удалось обновить карту"))
   });
 
+  const processVideo = useMutation({
+    mutationFn: async (file: File) => {
+      const body = new FormData();
+      body.append("file", file);
+      body.append("flightSeconds", videoAdapter.flightSeconds);
+      body.append("aimFrameSeconds", videoAdapter.aimFrameSeconds);
+      body.append("title", form.title || file.name);
+      return api<ProcessedVideoResponse>("/admin/media/grenade-video", { method: "POST", body });
+    },
+    onSuccess: (result) => {
+      setError(null);
+      setVideoAdapter((current) => ({
+        ...current,
+        notice: `Видео собрано: ${result.source.width}x${result.source.height}, ${formatSeconds(result.source.durationSeconds)} сек.`
+      }));
+      setForm((current) => ({
+        ...current,
+        description: appendFlightTime(current.description, result.mediaItem.flightSeconds),
+        mediaItems: [...current.mediaItems, { ...result.mediaItem, caption: result.mediaItem.caption || current.title || null }]
+      }));
+    },
+    onError: (mutationError) => setError(toErrorText(mutationError, "Не удалось собрать видео"))
+  });
+
   async function saveMapAppearance() {
     if (!selectedMapId) return;
     await updateMap.mutateAsync({
@@ -267,6 +306,16 @@ function Grenades() {
     } catch (uploadError) {
       setError(toErrorText(uploadError, "Не удалось загрузить файл"));
     }
+  }
+
+  async function buildAdaptedVideo() {
+    if (!videoFile) {
+      setError("Выбери webm, mp4 или mov видео для адаптации.");
+      return;
+    }
+    setError(null);
+    setVideoAdapter((current) => ({ ...current, notice: "" }));
+    await processVideo.mutateAsync(videoFile);
   }
 
   function resetForm(mapId = selectedMapId) {
@@ -442,6 +491,55 @@ function Grenades() {
 
           <div className="space-y-3 border-t border-white/10 pt-4">
             <div className="text-xs font-black uppercase tracking-[0.28em] text-focus">Медиа</div>
+            <div className="rounded-lg border border-focus/25 bg-focus/5 p-3">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <Film size={18} className="text-focus" />
+                  <div>
+                    <div className="text-sm font-black text-zinc-100">Видео-адаптер FullFocus</div>
+                    <div className="text-xs leading-5 text-zinc-500">Загрузи webm/mp4/mov, укажи тайминги, и сервер соберёт MP4 1080x1920 с фирменной обложкой.</div>
+                  </div>
+                </div>
+              </div>
+              <div className="grid gap-3 lg:grid-cols-[1fr_120px_150px]">
+                <label className="field flex cursor-pointer items-center justify-between gap-3">
+                  <span className="truncate text-zinc-300">{videoFile?.name ?? "Выбрать видео webm/mp4/mov"}</span>
+                  <ImageUp size={16} className="shrink-0 text-focus" />
+                  <input
+                    data-testid="grenade-video-upload"
+                    className="hidden"
+                    type="file"
+                    accept="video/webm,video/mp4,video/quicktime,.webm,.mp4,.mov"
+                    onChange={(event) => {
+                      setVideoFile(event.target.files?.[0] ?? null);
+                      setVideoAdapter((current) => ({ ...current, notice: "" }));
+                    }}
+                  />
+                </label>
+                <input
+                  className="field"
+                  inputMode="decimal"
+                  placeholder="Полёт, сек"
+                  value={videoAdapter.flightSeconds}
+                  onChange={(event) => setVideoAdapter({ ...videoAdapter, flightSeconds: event.target.value })}
+                />
+                <input
+                  className="field"
+                  inputMode="decimal"
+                  placeholder="Стоп-кадр, сек"
+                  value={videoAdapter.aimFrameSeconds}
+                  onChange={(event) => setVideoAdapter({ ...videoAdapter, aimFrameSeconds: event.target.value })}
+                />
+              </div>
+              <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="text-xs text-zinc-500">Стоп-кадр покажет точный момент прицеливания перед самим броском.</div>
+                <button className="btn btn-primary h-10" type="button" disabled={!videoFile || processVideo.isPending} onClick={buildAdaptedVideo}>
+                  {processVideo.isPending ? <Loader2 size={16} className="animate-spin" /> : <Film size={16} />}
+                  Собрать видео
+                </button>
+              </div>
+              {videoAdapter.notice ? <div className="mt-3 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-100">{videoAdapter.notice}</div> : null}
+            </div>
             <div className="flex items-center justify-between gap-3">
               <div>
                 <div className="text-sm font-bold text-zinc-200">Файлы раскида</div>
@@ -588,6 +686,7 @@ function TelegramPreview({ form, mediaItems, firstMedia, selectedMap }: { form: 
           <div className="text-zinc-200">{selectedMap?.emoji ? `${selectedMap.emoji} ` : ""}{selectedMap?.name ?? "Карта"} · {sideText(form.side)} · {form.area || "Часть карты"}</div>
           <div className="text-zinc-300">1 - {form.from || "откуда"}</div>
           <div className="text-zinc-300">2 - {form.to || "куда"}</div>
+          {firstMedia?.flightSeconds ? <div className="text-focus">Время полёта: {formatSeconds(firstMedia.flightSeconds)} сек.</div> : null}
         </div>
       </div>
     </div>
@@ -626,7 +725,14 @@ function MediaEditor({
           {items.map((item, index) => (
             <div key={index} className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
               <div className="mb-3 flex items-center justify-between gap-3">
-                <div className="text-sm font-bold text-zinc-200">Медиа #{index + 1}</div>
+                <div>
+                  <div className="text-sm font-bold text-zinc-200">Медиа #{index + 1}</div>
+                  {item.adapted || item.flightSeconds ? (
+                    <div className="mt-1 text-xs text-focus">
+                      {item.adapted ? "FullFocus MP4" : "Видео"}{item.flightSeconds ? ` · полёт ${formatSeconds(item.flightSeconds)} сек.` : ""}
+                    </div>
+                  ) : null}
+                </div>
                 <button className="btn btn-ghost h-8 px-2" type="button" onClick={() => onRemove(index)} title="Удалить медиа">
                   <Trash2 size={15} />
                 </button>
@@ -694,7 +800,10 @@ function normalizeFormMediaItems(items: MediaItem[], title: string): MediaItem[]
       type: item.type,
       url: item.url.trim(),
       thumbnailUrl: item.thumbnailUrl?.trim() || null,
-      caption: item.caption?.trim() || title || null
+      caption: item.caption?.trim() || title || null,
+      flightSeconds: typeof item.flightSeconds === "number" ? item.flightSeconds : null,
+      aimFrameSeconds: typeof item.aimFrameSeconds === "number" ? item.aimFrameSeconds : null,
+      adapted: item.adapted === true
     }))
     .filter((item) => item.url);
 }
@@ -704,6 +813,18 @@ function inferMediaType(url: string): MediaType {
   if (lower.endsWith(".mp4") || lower.endsWith(".mov") || lower.endsWith(".webm")) return "video";
   if (lower.startsWith("http") && !/\.(png|jpe?g|webp|gif)$/i.test(lower)) return "external";
   return "image";
+}
+
+function appendFlightTime(description: string, flightSeconds: number | null | undefined): string {
+  if (!flightSeconds || /время\s+пол[её]та/i.test(description)) {
+    return description;
+  }
+  const line = `Время полёта: ${formatSeconds(flightSeconds)} сек.`;
+  return [description.trim(), line].filter(Boolean).join("\n");
+}
+
+function formatSeconds(value: number): string {
+  return value.toFixed(1).replace(/\.0$/, "");
 }
 
 function lineupsPath(filters: { mapId: string; side: string; type: string; areaSlug: string; published: string }) {
